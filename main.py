@@ -4,6 +4,7 @@ from pybit.unified_trading import HTTP
 import time
 import pytz
 from datetime import datetime
+from config import my_symbols
 
 # Настройте сессию с Bybit
 session = HTTP(testnet=False)
@@ -57,10 +58,10 @@ def check_entry_signal(df, symbol):
 
     # Условие "гистограмма пересекла ноль снизу вверх"
     if prev_histogram < 0 and last_closed_histogram > 0:
-        print(f"[{symbol}] !!! СИГНАЛ: Гистограмма пересекла ноль. Ищу дивергенцию...")
-        print(df)
-        print(f"  Свеча 01 ({last_closed_histogram})")
-        print(f"  Свеча 02 ({prev_histogram})")
+        # print(f"[{symbol}] !!! СИГНАЛ: Гистограмма пересекла ноль. Ищу дивергенцию...")
+        # print(df)
+        # print(f"  Свеча 01 ({last_closed_histogram})")
+        # print(f"  Свеча 02 ({prev_histogram})")
         last_10_candles = df.iloc[-12:-2] 
         neg_macd_10 = last_10_candles[last_10_candles['MACDh_12_26_9'] < 0]
 
@@ -91,10 +92,10 @@ def check_entry_signal(df, symbol):
 
         price_diff_percent = ((low2 - low1) / low2) * 100
         
-        print(f"[{symbol}] Кандидат на дивергенцию:")
-        print(f"  Свеча 1 ({candle1.name.strftime('%Y-%m-%d %H:%M')}): MACD={macd1:.8f}, Low={low1}")
-        print(f"  Свеча 2 ({candle2.name.strftime('%Y-%m-%d %H:%M')}): MACD={macd2:.8f}, Low={low2}")
-        print(f"  Условия: MACD1 > MACD2 ({macd1 > macd2}), Low1 < Low2 ({low1 < low2}), Разница цен > 3% ({price_diff_percent:.2f}%)")
+        # print(f"[{symbol}] Кандидат на дивергенцию:")
+        # print(f"  Свеча 1 ({candle1.name.strftime('%Y-%m-%d %H:%M')}): MACD={macd1:.8f}, Low={low1}")
+        # print(f"  Свеча 2 ({candle2.name.strftime('%Y-%m-%d %H:%M')}): MACD={macd2:.8f}, Low={low2}")
+        # print(f"  Условия: MACD1 > MACD2 ({macd1 > macd2}), Low1 < Low2 ({low1 < low2}), Разница цен > 3% ({price_diff_percent:.2f}%)")
         
         if macd1 > macd2 and low1 < low2 and price_diff_percent > 3.0:
             print("="*50)
@@ -105,73 +106,6 @@ def check_entry_signal(df, symbol):
 
 def main():
     print("Запуск торгового робота...")
-    my_symbols = [
-    '0GUSDT', '1INCHUSDT', '2ZUSDT', 'A8USDT', 'AAPLXUSDT', 'AAVEUSDT', 'ACHUSDT', 'ACSUSDT',
-    'ADAUSDT', 'AEROUSDT', 'AEVOUSDT', 'AFCUSDT', 'AFGUSDT', 'AGIUSDT', 'AGLDUSDT', 'AI16ZUSDT',
-    'AIOZUSDT', 'AIXBTUSDT', 'AKIUSDT', 'ALCHUSDT', 'ALGOUSDT', 'ALTUSDT', 'AMIUSDT', 'AMZNXUSDT',
-    'ANIMEUSDT', 'ANKRUSDT', 'AOUSDT', 'APEUSDT', 'APEXUSDT', 'APPUSDT', 'APTUSDT', 'ARBUSDT',
-    'ARKMUSDT', 'ARTUSDT', 'ARTYUSDT', 'ARUSDT', 'ASRRUSDT', 'ASTERUSDT', 'ATHUSDT', 'ATOMUSDT',
-    'AURORAUSDT', 'AUSDT', 'AVAILUSDT', 'AVAUSDT', 'AVAXUSDT', 'AVLUSDT', 'AVNTUSDT', 'AXLUSDT',
-    'AXSUSDT', 'B3TRUSDT', 'B3USDT', 'BABY1USDT', 'BABYDOGEUSDT', 'BANUSDT', 'BARDUSDT', 'BATUSDT',
-    'BBSOLUSDT', 'BBUSDT', 'BCHUSDT', 'BCUTUSDT', 'BDXNUSDT', 'BEAMUSDT', 'BELUSDT', 'BERAUSDT',
-    'BICOUSDT', 'BLASTUSDT', 'BLURUSDT', 'BMTUSDT', 'BNBUSDT', 'BOBAUSDT', 'BOMBUSDT', 'BOMEUSDT',
-    'BONKUSDT', 'BRETTUSDT', 'BRUSDT', 'BTCUSDT', 'BTTUSDT', 'C98USDT', 'CAKEUSDT', 'CAMPUSDT',
-    'CARVUSDT', 'CATIUSDT', 'CATUSDT', 'CBKUSDT', 'CELOUSDT', 'CFGUSDT', 'CGPTUSDT', 'CHILLGUYUSDT',
-    'CHZUSDT', 'CITYUSDT', 'CLOUDUSDT', 'CMETHUSDT', 'COAUSDT', 'COINXUSDT', 'COMMONUSDT', 'COMPUSDT',
-    'COOKIEUSDT', 'COOKUSDT', 'COQUSDT', 'COREUSDT', 'CORNUSDT', 'CPOOLUSDT', 'CRCLXUSDT', 'CRVUSDT',
-    'CSPRUSDT', 'CTAUSDT', 'CTCUSDT', 'CUDISUSDT', 'CYBERUSDT', 'DAIUSDT', 'DBRUSDT', 'DEEPUSDT',
-    'DEFIUSDT', 'DEGENUSDT', 'DGBUSDT', 'DIAMUSDT', 'DMAILUSDT', 'DOGEUSDT', 'DOGSUSDT', 'DOLOUSDT',
-    'DOMEUSDT', 'DOODUSDT', 'DOTUSDT', 'DRIFTUSDT', 'DUELUSDT', 'DYDXUSDT', 'DYMUSDT', 'EATUSDT',
-    'EGLDUSDT', 'EGP1USDT', 'EIGENUSDT', 'ELDEUSDT', 'ELXUSDT', 'ENAUSDT', 'ENJUSDT', 'ENSOUSDT',
-    'ENSUSDT', 'EPTUSDT', 'ERAUSDT', 'ESEUSDT', 'ESUSDT', 'ETCUSDT', 'ETHFIUSDT', 'ETHUSDT',
-    'ETHWUSDT', 'EVERUSDT', 'FETUSDT', 'FFUSDT', 'FHEUSDT', 'FIDAUSDT', 'FILUSDT', 'FITFIUSDT',
-    'FLIPUSDT', 'FLOCKUSDT', 'FLOKIUSDT', 'FLOWUSDT', 'FLRUSDT', 'FLUIDUSDT', 'FORTUSDT', 'FOXYUSDT',
-    'FRAGUSDT', 'FTTUSDT', 'FUELUSDT', 'FUSDT', 'FXSUSDT', 'G3USDT', 'G7USDT', 'GALAUSDT',
-    'GALFTUSDT', 'GAMEUSDT', 'GLMRUSDT', 'GMTUSDT', 'GMXUSDT', 'GOATUSDT', 'GODSUSDT', 'GOOGLXUSDT',
-    'GPSUSDT', 'GRASSUSDT', 'GRTUSDT', 'GSWIFTUSDT', 'GTAIUSDT', 'GUSDT', 'HAEDALUSDT', 'HBARUSDT',
-    'HFTUSDT', 'HMSTRUSDT', 'HNTUSDT', 'HOLOUSDT', 'HOMEUSDT', 'HOODXUSDT', 'HOOKUSDT', 'HPOS10IUSDT',
-    'HTXUSDT', 'HUMAUSDT', 'HUSDT', 'HYPERUSDT', 'HYPEUSDT', 'ICNTUSDT', 'ICPUSDT', 'ICXUSDT',
-    'IDUSDT', 'IMXUSDT', 'INITUSDT', 'INJUSDT', 'INSPUSDT', 'INTERUSDT', 'IOUSDT', 'IPUSDT',
-    'IZIUSDT', 'JASMYUSDT', 'JEFFUSDT', 'JSTUSDT', 'JTOUSDT', 'JUPUSDT', 'JUSDT', 'JUVUSDT',
-    'KAIAUSDT', 'KASTAUSDT', 'KASUSDT', 'KAVAUSDT', 'KCSUSDT', 'KILOUSDT', 'KMNOUSDT', 'KSMUSDT',
-    'KUBUSDT', 'KUSDT', 'L3USDT', 'LADYSUSDT', 'LAUSDT', 'LAVAUSDT', 'LAYERUSDT', 'LBTCUSDT',
-    'LDOUSDT', 'LFTUSDT', 'LINEAUSDT', 'LINKUSDT', 'LLUSDT', 'LMWRUSDT', 'LOOKSUSDT', 'LRCUSDT',
-    'LTCUSDT', 'LUNAIUSDT', 'LUNAUSDT', 'LUNCUSDT', 'MAGICUSDT', 'MAJORUSDT', 'MANAUSDT', 'MANTAUSDT',
-    'MASAUSDT', 'MASKUSDT', 'MAVIAUSDT', 'MBOXUSDT', 'MBXUSDT', 'MCDXUSDT', 'MCRTUSDT', 'MDAOUSDT',
-    'MEEUSDT', 'MEMEFIUSDT', 'MEMEUSDT', 'MERLUSDT', 'METAXUSDT', 'METHUSDT', 'METUSDT', 'MEUSDT',
-    'MEWUSDT', 'MILKUSDT', 'MINAUSDT', 'MNTUSDT', 'MOCAUSDT', 'MODEUSDT', 'MOGUSDT', 'MONPROUSDT',
-    'MORPHOUSDT', 'MOVEUSDT', 'MOVRUSDT', 'MOZUSDT', 'MPLXUSDT', 'MVLUSDT', 'MVUSDT', 'MXUSDT',
-    'MYRIAUSDT', 'MYROUSDT', 'NAKAUSDT', 'NAVXUSDT', 'NEARUSDT', 'NEIROCTOUSDT', 'NEONUSDT', 'NEWTUSDT',
-    'NEXOUSDT', 'NFTUSDT', 'NIBIUSDT', 'NOMUSDT', 'NOTUSDT', 'NRNUSDT', 'NSUSDT', 'NVDAXUSDT',
-    'NXPCUSDT', 'NYMUSDT', 'OASUSDT', 'OBOLUSDT', 'OBTUSDT', 'ODOSUSDT', 'OIKUSDT', 'OLUSDT',
-    'OMUSDT', 'ONDOUSDT', 'ONEUSDT', 'OPUSDT', 'ORDERUSDT', 'ORDIUSDT', 'ORTUSDT', 'PAALUSDT',
-    'PARTIUSDT', 'PAWSUSDT', 'PELLUSDT', 'PENDLEUSDT', 'PENGUUSDT', 'PEOPLEUSDT', 'PEPEUSDT', 'PERPUSDT',
-    'PINEYEUSDT', 'PIRATEUSDT', 'PIXFIUSDT', 'PLUMEUSDT', 'PNUTUSDT', 'POLUSDT', 'PONKEUSDT', 'POPCATUSDT',
-    'PORT3USDT', 'PORTALSUSDT', 'PORTALUSDT', 'PRCLUSDT', 'PRIMEUSDT', 'PROVEUSDT', 'PSGUSDT', 'PSTAKEUSDT',
-    'PUFFERUSDT', 'PUFFUSDT', 'PUMPBTCUSDT', 'PUMPUSDT', 'PURSEUSDT', 'PYTHUSDT', 'PYUSDUSDT', 'QNTUSDT',
-    'QORPOUSDT', 'QTUMUSDT', 'RACAUSDT', 'RATSUSDT', 'RDNTUSDT', 'RECALLUSDT', 'REDUSDT', 'RENDERUSDT',
-    'RESOLVUSDT', 'RLUSDUSDT', 'ROAMUSDT', 'ROOTUSDT', 'ROSEUSDT', 'RPLUSDT', 'RSS3USDT', 'RUNEUSDT',
-    'RVNUSDT', 'SAFEUSDT', 'SAHARAUSDT', 'SANDUSDT', 'SAROSUSDT', 'SATSUSDT', 'SCAUSDT', 'SCRTUSDT',
-    'SCRUSDT', 'SCUSDT', 'SDUSDT', 'SEIUSDT', 'SENDUSDT', 'SERAPHUSDT', 'SFUNDUSDT', 'SHARDSUSDT',
-    'SHIBUSDT', 'SHRAPUSDT', 'SIDUSUSDT', 'SIGNUSDT', 'SISUSDT', 'SKATEUSDT', 'SKYUSDT', 'SLPUSDT',
-    'SNXUSDT', 'SOLOUSDT', 'SOLUSDT', 'SOLVUSDT', 'SOMIUSDT', 'SONICUSDT', 'SOSOUSDT', 'SPECUSDT',
-    'SPELLUSDT', 'SPKUSDT', 'SPXUSDT', 'SQDUSDT', 'SQRUSDT', 'SQTUSDT', 'SSVUSDT', 'STETHUSDT',
-    'STOPUSDT', 'STREAMUSDT', 'STRKUSDT', 'STXUSDT', 'SUIUSDT', 'SUNDOGUSDT', 'SUNUSDT', 'SUPRAUSDT',
-    'SUSDT', 'SUSHIUSDT', 'SVLUSDT', 'SWEATUSDT', 'SWELLUSDT', 'SXTUSDT', 'SYNDUSDT', 'TACUSDT',
-    'TAIKOUSDT', 'TAIUSDT', 'TAUSDT', 'TELUSDT', 'THETAUSDT', 'TIAUSDT', 'TIMEUSDT', 'TNSRUSDT',
-    'TOKENUSDT', 'TONUSDT', 'TOSHIUSDT', 'TOWNSUSDT', 'TRCUSDT', 'TREEUSDT', 'TRUMPUSDT', 'TRVLUSDT',
-    'TRXUSDT', 'TSLAXUSDT', 'TUNAUSDT', 'TURBOSUSDT', 'TUSDUSDT', 'TWTUSDT', 'ULTIUSDT', 'UMAUSDT',
-    'UNIUSDT', 'USD1USDT', 'USDCUSDT', 'USDDUSDT', 'USDEUSDT', 'USDQUSDT', 'USDRUSDT', 'USDTBUSDT',
-    'USDYUSDT', 'USTCUSDT', 'UUSDT', 'UXLINKUSDT', 'VANAUSDT', 'VANRYUSDT', 'VELOUSDT', 'VENOMUSDT',
-    'VETUSDT', 'VICUSDT', 'VINUUSDT', 'VIRTUALUSDT', 'VRAUSDT', 'VTHOUSDT', 'VVVUSDT', 'WALUSDT',
-    'WAVESUSDT', 'WAXPUSDT', 'WBTCUSDT', 'WCTUSDT', 'WEMIXUSDT', 'WENUSDT', 'WIFUSDT', 'WLDUSDT',
-    'WLFIUSDT', 'WOOUSDT', 'WUSDT', 'XAIUSDT', 'XANUSDT', 'XAUTUSDT', 'XAVAUSDT', 'XCADUSDT',
-    'XDCUSDT', 'XECUSDT', 'XEMUSDT', 'XIONUSDT', 'XLMUSDT', 'XOUSDT', 'XPLUSDT', 'XRPUSDT',
-    'XTERUSDT', 'XTZUSDT', 'XUSDT', 'XUSDUSDT', 'YBUSDT', 'YFIUSDT', 'ZBTUSDT', 'ZENTUSDT',
-    'ZENUSDT', 'ZEREBROUSDT', 'ZEROUSDT', 'ZETAUSDT', 'ZEXUSDT', 'ZIGUSDT', 'ZILUSDT', 'ZKCUSDT',
-    'ZKJUSDT', 'ZKLUSDT', 'ZKUSDT', 'ZORAUSDT', 'ZRCUSDT', 'ZROUSDT', 'ZRXUSDT', 'ZTXUSDT',
-    ]
-    
     print(f"Будет отслеживаться {len(my_symbols)} токенов.")
 
     while True:
