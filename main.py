@@ -1,128 +1,88 @@
-import pandas as pd
-import pandas_ta as ta
-from pybit.unified_trading import HTTP
+# main.py
+import threading
 import time
-import pytz
 from datetime import datetime
-from config import my_symbols
+from config import *
+from pybit.unified_trading import HTTP
+from scanner import get_historical_data, check_divergence_signal
+from trade_manager import manage_trade
 
-# Настройте сессию с Bybit
-session = HTTP(testnet=False)
+# Глобальное состояние бота и замок для потокобезопасности
+bot_state = {
+    "active_trades": {}, # Словарь для отслеживания активных сделок
+}
+# Замок нужен, чтобы основной поток и потоки сделок не мешали друг другу
+t_lock = threading.Lock()
 
-def get_historical_data(symbol, timeframe='5', limit=200):
-    """
-    Получает исторические данные для символа, рассчитывает MACD и 
-    конвертирует время в екатеринбургское.
-    """
-    try:
-        response = session.get_kline(
-            category="spot", 
-            symbol=symbol,
-            interval=timeframe,
-            limit=limit
-        )
+def run_scanner():
+    """Основной цикл сканера, который ищет сигналы."""
+    print("="*30)
+    print("Запуск торгового робота (режим симуляции)...")
+    print(f"Количество депозитов: {MAX_CONCURRENT_TRADES}")
+    print("="*30)
 
-        if response['retCode'] == 0 and response['result']['list']:
-            data = response['result']['list']
-            df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'turnover'])
-            
-            for col in df.columns:
-                df[col] = pd.to_numeric(df[col])
-
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-            df = df.set_index('timestamp')
-            
-            df.sort_index(ascending=True, inplace=True)
-            
-            df.ta.macd(close='close', fast=12, slow=26, signal=9, append=True)
-            
-            df.dropna(inplace=True)
-            
-            df.index = df.index.tz_localize('UTC').tz_convert('Asia/Yekaterinburg')
-            
-            return df
-        else:
-            return None
-    except Exception as e:
-        print(f"Ошибка при получении данных для {symbol}: {e}")
-        return None
-
-def check_entry_signal(df, symbol):
-    if len(df) < 61: 
-        return
-
-    # <<< ИЗМЕНЕНИЕ 1: Работаем с ГИСТОГРАММОЙ для сигнала входа >>>
-    # Используем колонку 'MACDh_12_26_9' - это и есть гистограмма
-    last_closed_histogram = df['MACDh_12_26_9'].iloc[-2]
-    prev_histogram = df['MACDh_12_26_9'].iloc[-3]
-
-    # Условие "гистограмма пересекла ноль снизу вверх"
-    if prev_histogram < 0 and last_closed_histogram > 0:
-        # print(f"[{symbol}] !!! СИГНАЛ: Гистограмма пересекла ноль. Ищу дивергенцию...")
-        # print(df)
-        # print(f"  Свеча 01 ({last_closed_histogram})")
-        # print(f"  Свеча 02 ({prev_histogram})")
-        last_10_candles = df.iloc[-12:-2] 
-        neg_macd_10 = last_10_candles[last_10_candles['MACDh_12_26_9'] < 0]
-
-        if neg_macd_10.empty:
-            print(f"[{symbol}] Поиск дивергенции прерван: не найдено отрицательных MACD в последних 10 свечах.")
-            return
-
-        candle1_index = neg_macd_10['MACDh_12_26_9'].idxmin()
-        candle1 = df.loc[candle1_index]
-        macd1 = candle1['MACDh_12_26_9'] # Берем значение ЛИНИИ
-        low1 = candle1['low']
-        
-        candle1_loc = df.index.get_loc(candle1_index)
-        if candle1_loc < 50:
-            return
-        
-        prev_50_candles = df.iloc[candle1_loc - 50 : candle1_loc]
-        neg_macd_50 = prev_50_candles[prev_50_candles['MACDh_12_26_9'] < 0]
-
-        if neg_macd_50.empty:
-            print(f"[{symbol}] Поиск дивергенции прерван: не найдено отрицательных MACD в предыдущих 50 свечах.")
-            return
-
-        candle2_index = neg_macd_50['MACDh_12_26_9'].idxmin()
-        candle2 = df.loc[candle2_index]
-        macd2 = candle2['MACDh_12_26_9'] # Берем значение ЛИНИИ
-        low2 = candle2['low']
-
-        price_diff_percent = ((low2 - low1) / low2) * 100
-        
-        # print(f"[{symbol}] Кандидат на дивергенцию:")
-        # print(f"  Свеча 1 ({candle1.name.strftime('%Y-%m-%d %H:%M')}): MACD={macd1:.8f}, Low={low1}")
-        # print(f"  Свеча 2 ({candle2.name.strftime('%Y-%m-%d %H:%M')}): MACD={macd2:.8f}, Low={low2}")
-        # print(f"  Условия: MACD1 > MACD2 ({macd1 > macd2}), Low1 < Low2 ({low1 < low2}), Разница цен > 3% ({price_diff_percent:.2f}%)")
-        
-        if macd1 > macd2 and low1 < low2 and price_diff_percent > 3.0:
-            print("="*50)
-            print(f"!!! НАЙДЕНА ТОЧКА ВХОДА В ЛОНГ ДЛЯ {symbol} !!!")
-            print(f"Время сигнала (ЕКБ): {df.index[-2].strftime('%Y-%m-%d %H:%M:%S')}")
-            print(f"Цена входа (Close): {df['close'].iloc[-2]}")
-            print("="*50)
-
-def main():
-    print("Запуск торгового робота...")
-    print(f"Будет отслеживаться {len(my_symbols)} токенов.")
-
+    session = HTTP(testnet=False, api_key=BYBIT_API_KEY, api_secret=BYBIT_API_SECRET)
+    
     while True:
-        ekb_tz = pytz.timezone('Asia/Yekaterinburg')
-        print(f"\n--- Новая проверка. Время (ЕКБ): {datetime.now(ekb_tz).strftime('%Y-%m-%d %H:%M:%S')} ---")
-        
-        for symbol in my_symbols:
-            df = get_historical_data(symbol)
-            if df is not None and not df.empty:
-                check_entry_signal(df, symbol)
-            time.sleep(0.5)
+        try:
+            with t_lock:
+                active_trades_count = len(bot_state['active_trades'])
+            
+            if active_trades_count >= MAX_CONCURRENT_TRADES:
+                print(f"Все {MAX_CONCURRENT_TRADES} депозита заняты. Ожидание...")
+                time.sleep(30)
+                continue
+            
+            print(f"\n--- {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
+            print(f"Свободных депозитов: {MAX_CONCURRENT_TRADES - active_trades_count}. Начинаю сканирование...")
+            
+            for symbol in my_symbols:
+                # Пропускаем монету, если она уже в сделке
+                with t_lock:
+                    if symbol in bot_state['active_trades']:
+                        continue
+                
+                print(f"  -> Сканирую {symbol}...")
+                df = get_historical_data(session, symbol)
+                if df is not None and not df.empty:
+                    signal_found, entry_price = check_divergence_signal(df, symbol)
+                    
+                    if signal_found:
+                        print("="*50)
+                        print(f"!!! [{symbol}] НАЙДЕН СИГНАЛ ДЛЯ ПОКУПКИ !!!")
+                        print(f"!!! [{symbol}] Цена входа: {entry_price}")
+                        print(f"!!! [{symbol}] СИМУЛЯЦИЯ: Покупаю токен и занимаю депозит...")
+                        print("="*50)
+                        
+                        # Занимаем "депозит"
+                        with t_lock:
+                            bot_state['active_trades'][symbol] = {
+                                "entry_price": entry_price,
+                                "entry_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                            }
 
-        now = datetime.now()
-        minutes_to_wait = 5 - (now.minute % 5)
-        seconds_to_wait = minutes_to_wait * 60 - now.second
-        print(f"Проверка всех токенов завершена. Жду {seconds_to_wait} секунд до следующей свечи...")
-        time.sleep(5)
+                        # Запускаем менеджер сделки в отдельном потоке
+                        trade_thread = threading.Thread(
+                            target=manage_trade, 
+                            args=(symbol, entry_price, bot_state, t_lock)
+                        )
+                        trade_thread.start()
+                
+                time.sleep(1) # Небольшая пауза между монетами, чтобы не душить API
+
+            # Ожидание до следующей 5-минутной свечи
+            now = datetime.now()
+            seconds_to_wait = (5 - now.minute % 5) * 60 - now.second
+            print(f"\nСканирование завершено. Следующая проверка через {seconds_to_wait} сек.")
+            time.sleep(seconds_to_wait)
+
+        except Exception as e:
+            print(f"\nКРИТИЧЕСКАЯ ОШИБКА в главном цикле: {e}")
+            print("Перезапуск через 60 секунд...")
+            time.sleep(60)
 
 if __name__ == "__main__":
-    main()
+    try:
+        run_scanner()
+    except KeyboardInterrupt:
+        print("\nПрограмма остановлена вручную.")
