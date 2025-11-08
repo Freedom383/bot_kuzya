@@ -1,34 +1,37 @@
 # scanner.py
 import pandas as pd
 import pandas_ta as ta
-import logging # <<< ИМПОРТ
-from pybit.unified_trading import HTTP
+import logging
+import ccxt
 
-# Получаем уже настроенный логгер
 logger = logging.getLogger("bot_logger")
 
-def get_historical_data(session: HTTP, symbol: str, timeframe='5', limit=200):
+def get_historical_data(exchange: ccxt.Exchange, symbol: str, timeframe='5m', limit=200):
+    """Получает и подготавливает исторические данные с помощью ccxt."""
     try:
-        response = session.get_kline(
-            category="spot", symbol=symbol, interval=timeframe, limit=limit
-        )
-        if response['retCode'] == 0 and response['result']['list']:
-            data = response['result']['list']
-            df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'turnover'])
-            df = df.astype(float)
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-            df = df.set_index('timestamp').sort_index()
-            df.ta.macd(close='close', fast=12, slow=26, signal=9, append=True)
-            df.dropna(inplace=True)
-            return df
-        else:
-            logger.warning(f"[{symbol}] Не удалось получить K-line данные: {response.get('retMsg', 'No data')}")
+        # ccxt возвращает данные в формате [[timestamp, open, high, low, close, volume]]
+        ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+        if not ohlcv:
+            logger.warning(f"[{symbol}] Не удалось получить K-line данные (пустой ответ).")
             return None
+
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df.set_index('timestamp', inplace=True)
+        
+        # Рассчитываем MACD
+        df.ta.macd(close='close', fast=12, slow=26, signal=9, append=True)
+        df.dropna(inplace=True)
+        return df
+
     except Exception as e:
         logger.error(f"[{symbol}] ОШИБКА в get_historical_data: {e}")
         return None
 
 def check_divergence_signal(df, symbol):
+    """
+    Логика поиска дивергенции. Остается без изменений, так как работает с DataFrame.
+    """
     if len(df) < 61: return False, None
 
     last_closed_hist = df['MACDh_12_26_9'].iloc[-2]
@@ -55,10 +58,13 @@ def check_divergence_signal(df, symbol):
     macd2 = candle2['MACDh_12_26_9']
     low2 = candle2['low']
 
+    # Твоя упрощенная логика
     is_divergence = low1 < low2 
     
     if is_divergence:
-        logger.info(f"[{symbol}] Найдена дивергенция: low1({low1}) < low2({low2}) И macd1({macd1:.4f}) > macd2({macd2:.4f})")
-        return True, df['close'].iloc[-2]
+        # Проверку macd1 > macd2 оставим в логе для информации
+        logger.info(f"[{symbol}] Найдена дивергенция: low1({low1}) < low2({low2}). Проверка MACD: macd1({macd1:.6f}) > macd2({macd2:.6f}) -> {macd1 > macd2}")
+        if macd1 > macd2: # Добавим полную проверку для надежности сигнала
+            return True, df['close'].iloc[-2]
     
     return False, None

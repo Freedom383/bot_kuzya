@@ -3,9 +3,9 @@ import os
 import csv
 import time
 import logging
+import asyncio
 from datetime import datetime
-from pybit.unified_trading import WebSocket
-from websocket._exceptions import WebSocketConnectionClosedException
+import ccxt.pro as ccxt_pro # <<< Важно: импортируем ccxt.pro
 import config
 
 logger = logging.getLogger("bot_logger")
@@ -22,33 +22,34 @@ def record_trade(data, lock):
             writer.writerow(data)
     logger.info(f"[{data['token']}] Сделка записана в trades.csv")
 
-def manage_trade(symbol, entry_price, bot_state, t_lock):
-    logger.info(f"[{symbol}] ЗАПУЩЕН МЕНЕДЖЕР СДЕЛКИ. Цена входа: {entry_price}")
+async def watch_loop(symbol, entry_price, bot_state, t_lock):
+    """Асинхронный цикл для отслеживания цены через WebSocket ccxt.pro."""
     
     stop_loss_price = entry_price * (1 - config.STOP_LOSS_PERCENT / 100)
     take_profit_price = entry_price * (1 + config.TAKE_PROFIT_PERCENT / 100)
     
     logger.info(f"[{symbol}] Цели: Take Profit = {take_profit_price:.4f}, Stop Loss = {stop_loss_price:.4f}")
 
-    ws = WebSocket(testnet=False, channel_type="spot")
+    # Создаем экземпляр биржи внутри async функции
+    exchange = ccxt_pro.bybit({
+        'apiKey': config.BYBIT_API_KEY,
+        'secret': config.BYBIT_API_SECRET,
+        'options': {
+            'defaultType': 'spot',
+        },
+    })
 
-    def handle_message(message):
-        try:
-            # <<< ГЛАВНОЕ ИСПРАВЛЕНИЕ ЗДЕСЬ >>>
-            # 1. Получаем СЛОВАРЬ с данными, а не список
-            data = message.get("data")
+    try:
+        while True:
+            # watch_ticker - это асинхронный метод для получения данных по WebSocket
+            ticker = await exchange.watch_ticker(symbol)
+            last_price = ticker.get('last')
+
+            if last_price is None:
+                continue
+
+            logger.info(f"[{symbol}] Отслеживаю... Текущая цена: {last_price}")
             
-            # 2. Проверяем, что это не служебное сообщение и в нем есть данные
-            if not data or not isinstance(data, dict):
-                return
-            
-            # 3. Берем цену напрямую из этого словаря
-            last_price_str = data.get("lastPrice")
-            if not last_price_str: 
-                return
-            # <<< КОНЕЦ ИСПРАВЛЕНИЯ >>>
-            
-            last_price = float(last_price_str)
             exit_price = 0
             result = ""
 
@@ -62,7 +63,6 @@ def manage_trade(symbol, entry_price, bot_state, t_lock):
             if exit_price > 0:
                 logger.info("="*50)
                 logger.info(f"!!! [{symbol}] СИМУЛЯЦИЯ: Сработал {result} по цене {exit_price} !!!")
-                logger.info(f"!!! [{symbol}] СИМУЛЯЦИЯ: Размещаю рыночный ордер на ПРОДАЖУ...")
                 logger.info("="*50)
 
                 with t_lock:
@@ -79,16 +79,24 @@ def manage_trade(symbol, entry_price, bot_state, t_lock):
                     if symbol in bot_state['active_trades']:
                         del bot_state['active_trades'][symbol]
                 logger.info(f"[{symbol}] Депозит освобожден.")
-                
-                ws.exit()
+                break # Выходим из цикла while, чтобы завершить отслеживание
 
-        except Exception as e:
-            logger.error(f"[{symbol}] ОШИБКА в WebSocket обработчике: {e}", exc_info=True)
-            ws.exit()
+    except Exception as e:
+        logger.error(f"[{symbol}] ОШИБКА в WebSocket цикле: {e}", exc_info=True)
+    finally:
+        # Важно закрыть соединение
+        await exchange.close()
+        logger.info(f"[{symbol}] Соединение WebSocket закрыто.")
 
+
+def manage_trade(symbol, entry_price, bot_state, t_lock):
+    """
+    Эта функция запускается в отдельном потоке и управляет асинхронным циклом.
+    """
+    logger.info(f"[{symbol}] ЗАПУЩЕН МЕНЕДЖЕР СДЕЛКИ. Цена входа: {entry_price}")
     try:
-        ws.ticker_stream(symbol=symbol, callback=handle_message)
-    except WebSocketConnectionClosedException:
-        logger.info(f"[{symbol}] Соединение WebSocket было закрыто штатно по завершению сделки.")
+        asyncio.run(watch_loop(symbol, entry_price, bot_state, t_lock))
+    except Exception as e:
+        logger.error(f"[{symbol}] КРИТИЧЕСКАЯ ОШИБКА при запуске менеджера сделок: {e}")
     
     logger.info(f"[{symbol}] Менеджер сделки завершил работу.")
