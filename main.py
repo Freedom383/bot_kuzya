@@ -2,49 +2,55 @@
 import threading
 import time
 import logging
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 import ccxt
+
 from config import *
 from logger_setup import setup_logger
 from scanner import get_historical_data, check_divergence_signal
 from trade_manager import manage_trade
+# Обрати внимание на новые импорты из telegram_bot
+from telegram_bot import start_tg, register_main_objects, send_message
 
 logger = setup_logger()
 
-try:
-    from zoneinfo import ZoneInfo
-    YKT = ZoneInfo("Asia/Yekaterinburg")
-except Exception:
-    YKT = timezone(timedelta(hours=5))
-
-bot_state = {"active_trades": {}}
+# Общие объекты, доступные для всех потоков
+bot_state = {
+    "active_trades": {},
+    "running": False  # Изначально сканер выключен
+}
 t_lock = threading.Lock()
 
 def run_scanner():
-    logger.info("="*30)
-    logger.info("Запуск торгового робота (режим симуляции) на CCXT...")
-    logger.info("="*30)
-
+    """Главный цикл сканирования рынка. Работает в отдельном потоке."""
+    
+    # Сообщаем в Telegram о запуске потока
+    send_message("▶️ Поток сканера запущен. Ожидаю команды /start...")
+    
     exchange = ccxt.bybit({
         'apiKey': BYBIT_API_KEY,
         'secret': BYBIT_API_SECRET,
         'options': {'defaultType': 'spot'},
     })
     
-    while True:
+    # Главный цикл теперь зависит от флага 'running'
+    while bot_state.get('running', False):
         try:
             with t_lock:
                 active_trades_count = len(bot_state['active_trades'])
             
             if active_trades_count >= MAX_CONCURRENT_TRADES:
-                logger.info("ВСЕ ДЕПОЗИТЫ ЗАНЯТЫ АНДРЮШКА КРАСАВЧИК И МИЛЛИОНЕР!!!!!!!!!")
+                logger.info("Достигнут лимит сделок. Ожидание...")
                 time.sleep(30)
                 continue
             
-            now_local = datetime.now(YKT)
-            logger.info(f"Свободных депозитов: {MAX_CONCURRENT_TRADES - active_trades_count}. Начинаю сканирование...")
+            logger.info(f"Свободных слотов: {MAX_CONCURRENT_TRADES - active_trades_count}. Начинаю сканирование...")
             
             for symbol in my_symbols:
+                # Проверяем флаг после каждого токена для быстрой остановки
+                if not bot_state.get('running', False):
+                    break
+
                 with t_lock:
                     if symbol in bot_state['active_trades']:
                         continue
@@ -54,47 +60,53 @@ def run_scanner():
                     signal_found, entry_price = check_divergence_signal(df, symbol)
                     
                     if signal_found:
-                        # <<< ГЛАВНОЕ ИЗМЕНЕНИЕ ЗДЕСЬ! >>>
-                        # Повторно проверяем количество сделок ПЕРЕД тем, как занять новый депозит.
                         with t_lock:
                             if len(bot_state['active_trades']) >= MAX_CONCURRENT_TRADES:
-                                logger.warning(f"[{symbol}] Найден сигнал, но все депозиты уже заняты в этом цикле. Прерываю сканирование.")
-                                break # Прерываем цикл for, т.к. искать дальше нет смысла
+                                logger.warning(f"[{symbol}] Найден сигнал, но слоты уже заняты.")
+                                break
 
-                            logger.info("="*50)
-                            logger.info(f"!!! [{symbol}] НАЙДЕН СИГНАЛ ДЛЯ ПОКУПКИ по цене {entry_price} !!!")
-                            logger.info(f"!!! [{symbol}] СИМУЛЯЦИЯ: Занимаю депозит...")
-                            logger.info("="*50)
+                            logger.info(f"!!! [{symbol}] НАЙДЕН СИГНАЛ: {entry_price} !!!")
+                            send_message(f"🔥 *Сигнал на покупку:*\n`{symbol}` по цене `{entry_price}`")
                             
                             bot_state['active_trades'][symbol] = {
                                 "entry_price": entry_price,
-                                "entry_time": datetime.now(YKT).strftime('%Y-%m-%d %H:%M:%S %Z'),
+                                "entry_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
                             }
 
-                        # Поток запускаем ВНЕ блокировки, чтобы не тормозить основной цикл
                         trade_thread = threading.Thread(
                             target=manage_trade, 
                             args=(symbol, entry_price, bot_state, t_lock)
                         )
                         trade_thread.start()
                 
-                time.sleep(1)
-
-            now_local = datetime.now(YKT)
-            minutes_to_wait = 5 - (now_local.minute % 5)
-            seconds_to_wait = minutes_to_wait * 60 - now_local.second
-            if seconds_to_wait < 0: seconds_to_wait = 0
+                time.sleep(1) # Небольшая пауза между токенами
             
-            logger.info(f"Сканирование завершено. Следующая проверка через {int(seconds_to_wait)} сек.")
-            time.sleep(seconds_to_wait)
+            if not bot_state.get('running', False):
+                break
+
+            logger.info("Сканирование завершено. Следующая проверка через ~5 минут.")
+            # Цикл ожидания с проверкой флага каждые 10 секунд
+            for _ in range(30):
+                if not bot_state.get('running', False): break
+                time.sleep(10)
 
         except Exception as e:
-            logger.critical(f"КРИТИЧЕСКАЯ ОШИБКА в главном цикле: {e}", exc_info=True)
-            logger.info("Перезапуск через 60 секунд...")
+            error_message = f"КРИТИЧЕСКАЯ ОШИБКА в сканере: {e}"
+            logger.critical(error_message, exc_info=True)
+            send_message(f"🔴 {error_message}")
             time.sleep(60)
 
+    logger.info("Поток сканера остановлен.")
+    send_message("⏹️ Поток сканера завершил свою работу.")
+
+
 if __name__ == "__main__":
-    try:
-        run_scanner()
-    except KeyboardInterrupt:
-        logger.info("\nПрограмма остановлена вручную.")
+    # 1. Передаем общие объекты в модуль telegram_bot
+    register_main_objects(bot_state, t_lock, run_scanner)
+    
+    # 2. Запускаем Telegram бота. Он будет работать в основном потоке.
+    logger.info("Запуск Telegram бота...")
+    start_tg()
+    
+    # Программа будет работать, пока запущен Telegram бот.
+    logger.info("Бот запущен. Для начала работы отправьте команду /start")

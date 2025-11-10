@@ -1,18 +1,21 @@
 # trade_manager.py
 import os
 import csv
-import time
 import logging
 import asyncio
 from datetime import datetime
-import ccxt.pro as ccxt_pro # <<< Важно: импортируем ccxt.pro
+import ccxt.pro as ccxt_pro
+
 import config
+# Импортируем главный цикл и функцию отправки сообщений
+from telegram_bot import get_main_loop, send_message
 
 logger = logging.getLogger("bot_logger")
 
 def record_trade(data, lock):
     file_path = 'trades.csv'
     with lock:
+        # ... (код этой функции не меняется)
         file_exists = os.path.isfile(file_path) and os.path.getsize(file_path) > 0
         with open(file_path, 'a', newline='', encoding='utf-8') as csvfile:
             fieldnames = ['token', 'purchase_time', 'sale_time', 'purchase_price', 'sale_price', 'result']
@@ -22,48 +25,34 @@ def record_trade(data, lock):
             writer.writerow(data)
     logger.info(f"[{data['token']}] Сделка записана в trades.csv")
 
+
 async def watch_loop(symbol, entry_price, bot_state, t_lock):
-    """Асинхронный цикл для отслеживания цены через WebSocket ccxt.pro."""
-    
+    """Асинхронный цикл для отслеживания цены. Код почти не изменился."""
     stop_loss_price = entry_price * (1 - config.STOP_LOSS_PERCENT / 100)
     take_profit_price = entry_price * (1 + config.TAKE_PROFIT_PERCENT / 100)
     
-    logger.info(f"[{symbol}] Цели: Take Profit = {take_profit_price:.4f}, Stop Loss = {stop_loss_price:.4f}")
+    logger.info(f"[{symbol}] Цели: TP={take_profit_price:.4f}, SL={stop_loss_price:.4f}")
 
-    # Создаем экземпляр биржи внутри async функции
-    exchange = ccxt_pro.bybit({
-        'apiKey': config.BYBIT_API_KEY,
-        'secret': config.BYBIT_API_SECRET,
-        'options': {
-            'defaultType': 'spot',
-        },
-    })
-
+    exchange = ccxt_pro.bybit() # Создаем новый экземпляр для каждого потока
     try:
-        while True:
-            # watch_ticker - это асинхронный метод для получения данных по WebSocket
+        while bot_state.get('running', False): # Добавили проверку, чтобы выйти при остановке бота
             ticker = await exchange.watch_ticker(symbol)
             last_price = ticker.get('last')
 
-            if last_price is None:
-                continue
-
-            logger.info(f"[{symbol}] Отслеживаю... Текущая цена: {last_price}")
+            if last_price is None: continue
+            logger.debug(f"[{symbol}] Отслеживаю... Цена: {last_price}")
             
-            exit_price = 0
-            result = ""
-
+            exit_price, result = 0, ""
             if last_price <= stop_loss_price:
-                exit_price = last_price
-                result = "Stop Loss"
+                exit_price, result = last_price, "Stop Loss"
             elif last_price >= take_profit_price:
-                exit_price = last_price
-                result = "Take Profit"
+                exit_price, result = last_price, "Take Profit"
             
             if exit_price > 0:
-                logger.info("="*50)
-                logger.info(f"!!! [{symbol}] СИМУЛЯЦИЯ: Сработал {result} по цене {exit_price} !!!")
-                logger.info("="*50)
+                profit_pct = (exit_price / entry_price - 1) * 100
+                msg = f"✅ *Сделка закрыта: {symbol}*\nРезультат: *{result}* ({profit_pct:+.2f}%)"
+                logger.info(f"!!! [{symbol}] {result} по цене {exit_price} !!!")
+                send_message(msg)
 
                 with t_lock:
                     entry_time = bot_state['active_trades'][symbol]['entry_time']
@@ -78,25 +67,34 @@ async def watch_loop(symbol, entry_price, bot_state, t_lock):
                 with t_lock:
                     if symbol in bot_state['active_trades']:
                         del bot_state['active_trades'][symbol]
-                logger.info(f"[{symbol}] Депозит освобожден.")
-                break # Выходим из цикла while, чтобы завершить отслеживание
+                logger.info(f"[{symbol}] Слот освобожден.")
+                break # Выходим из цикла while
+            
+            await asyncio.sleep(0.1) # Небольшая пауза
 
     except Exception as e:
-        logger.error(f"[{symbol}] ОШИБКА в WebSocket цикле: {e}", exc_info=True)
+        error_msg = f"ОШИБКА в WebSocket для {symbol}: {e}"
+        logger.error(error_msg, exc_info=True)
+        send_message(f"🔴 {error_msg}")
     finally:
-        # Важно закрыть соединение
         await exchange.close()
         logger.info(f"[{symbol}] Соединение WebSocket закрыто.")
 
 
 def manage_trade(symbol, entry_price, bot_state, t_lock):
     """
-    Эта функция запускается в отдельном потоке и управляет асинхронным циклом.
+    Эта функция запускается в отдельном потоке и передает
+    асинхронную задачу в главный event loop телеграм-бота.
     """
-    logger.info(f"[{symbol}] ЗАПУЩЕН МЕНЕДЖЕР СДЕЛКИ. Цена входа: {entry_price}")
-    try:
-        asyncio.run(watch_loop(symbol, entry_price, bot_state, t_lock))
-    except Exception as e:
-        logger.error(f"[{symbol}] КРИТИЧЕСКАЯ ОШИБКА при запуске менеджера сделок: {e}")
+    logger.info(f"[{symbol}] ЗАПУЩЕН МЕНЕДЖЕР СДЕЛКИ.")
     
-    logger.info(f"[{symbol}] Менеджер сделки завершил работу.")
+    loop = get_main_loop() 
+    
+    if loop and loop.is_running():
+        asyncio.run_coroutine_threadsafe(
+            watch_loop(symbol, entry_price, bot_state, t_lock),
+            loop # Используем полученный цикл
+        )
+        logger.info(f"[{symbol}] Задача отслеживания передана в главный цикл.")
+    else:
+        logger.error(f"[{symbol}] Не удалось запустить отслеживание: главный event loop не найден или не запущен.")

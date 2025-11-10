@@ -3,6 +3,8 @@
 # --- Telegram Настройки ---
 TELEGRAM_BOT_TOKEN = "8442935176:AAEfMDKH7WsMycA1yxv0nv8QaGEaRsZ1b9E"
 TELEGRAM_CHAT_ID = '-4992993900'
+USE_PROXY = True 
+HTTP_PROXY = "socks5://5jSHGmYJ:xUNNKM4k@85.142.45.84:64382" 
 
 # --- API Ключи ---
 BYBIT_API_KEY = 'bKyNioyok1HbaJXzuM'
