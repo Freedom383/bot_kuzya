@@ -13,8 +13,6 @@ from telegram_bot import start_tg, register_main_objects, send_message
 
 logger = setup_logger()
 
-# --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
-# Загружаем "живые" настройки из конфига при старте
 bot_state = {
     "active_trades": {},
     "running": False,
@@ -31,26 +29,37 @@ exchange = ccxt.bybit({
     'options': {'defaultType': 'spot'},
 })
 
+# --- ИЗМЕНЕНИЕ ЗДЕСЬ: ПОЛНОСТЬЮ ПЕРЕРАБОТАННАЯ ФУНКЦИЯ СКАНЕРА ---
 def run_scanner():
-    send_message("▶️ Поток сканера запущен. Ожидаю команды /start...")
+    send_message("▶️ Поток сканера запущен")
     
     while bot_state.get('running', False):
         try:
             with t_lock:
                 active_trades_count = len(bot_state['active_trades'])
             
+            # --- НОВАЯ ЛОГИКА ---
+            # ЕСЛИ ВСЕ СЛОТЫ ЗАНЯТЫ, ПРОСТО ЖДЕМ И ПРОВЕРЯЕМ СНОВА
             if active_trades_count >= config.MAX_CONCURRENT_TRADES:
-                logger.info("Достигнут лимит сделок. Ожидание...")
-                time.sleep(30)
-                continue
-            
-            logger.info(f"Свободных слотов: {config.MAX_CONCURRENT_TRADES - active_trades_count}. Начинаю сканирование...")
+                logger.info(f"Все {config.MAX_CONCURRENT_TRADES} слота заняты. Ожидаю освобождения...")
+                time.sleep(15) # Короткая пауза перед следующей проверкой
+                continue # Переходим к следующей итерации цикла, пропуская сканирование
+
+            # ЕСЛИ ЕСТЬ СВОБОДНЫЕ СЛОТЫ, ЗАПУСКАЕМ СКАНИРОВАНИЕ
+            logger.info(
+                f"Свободных слотов: {config.MAX_CONCURRENT_TRADES - active_trades_count}. "
+                f"Начинаю сканирование {len(config.my_symbols)} монет..."
+            )
             
             for symbol in config.my_symbols:
-                if not bot_state.get('running', False): break
+                # Проверяем на каждой итерации, не поступила ли команда /stop
+                if not bot_state.get('running', False): 
+                    break
 
                 with t_lock:
-                    if symbol in bot_state['active_trades']: continue
+                    # Пропускаем монету, если она уже в сделке
+                    if symbol in bot_state['active_trades']:
+                        continue
                 
                 df = get_historical_data(exchange, symbol)
                 if df is not None and not df.empty:
@@ -58,31 +67,33 @@ def run_scanner():
                     
                     if signal_found:
                         with t_lock:
+                            # Еще одна проверка, на случай если слот заняли во время сканирования
                             if len(bot_state['active_trades']) >= config.MAX_CONCURRENT_TRADES:
                                 logger.warning(f"[{symbol}] Найден сигнал, но слоты уже заняты.")
-                                break
+                                break # Прерываем сканирование, т.к. слотов больше нет
 
                             logger.info(f"!!! [{symbol}] НАЙДЕН СИГНАЛ: {entry_price} !!!")
                             send_message(f"🔥 *Сигнал на покупку:*\n`{symbol}` по цене `{entry_price}`")
-                            
-                            bot_state['active_trades'][symbol] = {
-                                "entry_price": entry_price,
-                                "entry_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                            }
 
+                            bot_state['active_trades'][symbol] = { "status": "pending" }
+                        
                         trade_thread = threading.Thread(
                             target=manage_trade, 
                             args=(symbol, entry_price, bot_state, t_lock)
                         )
                         trade_thread.start()
                 
-                time.sleep(1)
+                time.sleep(1) # Небольшая пауза между запросами к API
             
-            if not bot_state.get('running', False): break
+            # Если бот все еще работает после полного цикла сканирования, ждем 5 минут
+            if not bot_state.get('running', False):
+                break
 
             logger.info("Сканирование завершено. Следующая проверка через ~5 минут.")
+            # Прерываемый сон на 300 секунд (5 минут)
             for _ in range(30):
-                if not bot_state.get('running', False): break
+                if not bot_state.get('running', False):
+                    break
                 time.sleep(10)
 
         except Exception as e:
@@ -96,9 +107,8 @@ def run_scanner():
 
 
 if __name__ == "__main__":
+    # Эта часть остается без изменений
     register_main_objects(bot_state, t_lock, run_scanner, exchange)
-    
     logger.info("Запуск Telegram бота...")
     start_tg()
-    
-    logger.info("Бот запущен. Для начала работы отправьте команду /start")
+    logger.info("Бот запущен.")
