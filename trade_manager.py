@@ -43,7 +43,7 @@ async def watch_loop(symbol, entry_price, bot_state, t_lock):
 
     try:
         # Цикл работает, пока монета есть в активных сделках и бот запущен
-        while symbol in bot_state['active_trades'] and bot_state.get('running', False):
+        while symbol in bot_state['active_trades']:
             ticker = await exchange.watch_ticker(symbol)
             last_price = ticker.get('last')
 
