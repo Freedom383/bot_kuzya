@@ -68,7 +68,7 @@ async def start_handler(msg: types.Message):
     
     if bot_state.get('running', False):
         await msg.answer(
-            f"{welcome_message}\n\nℹ️ Сканер уже запущен.",
+            f"{welcome_message}\n\n✅ *Сканер уже запущен!*",
             reply_markup=get_main_keyboard()
         )
         return
@@ -171,7 +171,7 @@ async def history_handler(msg: types.Message):
 
 @router.message(Command('logs'))
 async def logs_handler(msg: types.Message):
-    log_file = 'bot.log'
+    log_file = 'bot_error.log'
     if not os.path.exists(log_file):
         await msg.answer("📂 Файл `bot.log` не найден.")
         return
@@ -191,15 +191,15 @@ async def logs_handler(msg: types.Message):
 
 @router.message(Command('errorlog'))
 async def errorlog_handler(msg: types.Message):
-    log_file = 'bot.log'
+    log_file = 'bot_error.log'
     if not os.path.exists(log_file):
         await msg.answer("📂 Файл `bot.log` не найден.")
         return
     try:
-        document = FSInputFile(log_file, filename="error_log.txt")
-        await msg.answer_document(document, caption="Полный лог файл с ошибками")
+        document = FSInputFile(log_file, filename="bot_error.log")
+        await msg.answer_document(document, caption="Полный файл с ошибками")
     except Exception as e:
-        logger.error(f"Ошибка при отправке bot.log: {e}")
+        logger.error(f"Ошибка при отправке bot_error.log: {e}")
         await msg.answer(f"🔴 Не удалось отправить файл с логами. Ошибка: `{e}`")
 
 # --- Функция запуска (без изменений) ---

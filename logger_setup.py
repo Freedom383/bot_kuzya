@@ -1,34 +1,49 @@
 # logger_setup.py
 import logging
-import sys
+from logging.handlers import RotatingFileHandler
+from datetime import datetime
+import pytz 
+
+def time_converter(timestamp):
+    """Конвертирует время логгера в часовой пояс Екатеринбурга."""
+    ekb_tz = pytz.timezone('Asia/Yekaterinburg')
+    utc_dt = datetime.fromtimestamp(timestamp, tz=pytz.utc)
+    ekb_dt = utc_dt.astimezone(ekb_tz)
+    return ekb_dt.timetuple()
+# ------------------------------------
 
 def setup_logger():
-    """Настраивает и возвращает логгер."""
-    log_format = logging.Formatter(
+    """Настраивает и возвращает кастомный логгер."""
+    logger = logging.getLogger("bot_logger")
+    if logger.hasHandlers():
+        return logger
+    
+    logger.setLevel(logging.INFO)
+    
+    log_formatter = logging.Formatter(
         '%(asctime)s - [%(levelname)s] - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    logger = logging.getLogger("bot_logger")
-    # Устанавливаем общий уровень INFO, чтобы логгер обрабатывал все сообщения
-    logger.setLevel(logging.INFO)
-
-    if logger.hasHandlers():
-        logger.handlers.clear()
-
-    # --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
-    # Обработчик для записи в файл 'bot.log'
-    # Будет записывать ТОЛЬКО сообщения уровня ERROR и выше
-    file_handler = logging.FileHandler('bot.log', mode='a', encoding='utf-8')
-    file_handler.setFormatter(log_format)
-    file_handler.setLevel(logging.ERROR) # <--- Ключевое изменение!
+    log_formatter.converter = time_converter
+    # ---------------------------------------------
+    
+    # Файловый обработчик с ротацией
+    file_handler = RotatingFileHandler(
+        'bot_error.log', 
+        maxBytes=5*1024*1024, # 5 MB
+        backupCount=2,
+        encoding='utf-8'
+    )
+    file_handler.setLevel(logging.ERROR)
+    file_handler.setFormatter(log_formatter)
+    
+    # Консольный обработчик
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(log_formatter)
+    
     logger.addHandler(file_handler)
-
-    # Обработчик для вывода в консоль (stdout)
-    # Будет выводить ВСЕ сообщения от INFO и выше
-    stream_handler = logging.StreamHandler(sys.stdout)
-    stream_handler.setFormatter(log_format)
-    stream_handler.setLevel(logging.INFO) # <--- Уровень для консоли
-    logger.addHandler(stream_handler)
+    logger.addHandler(console_handler)
     
     return logger
