@@ -10,8 +10,6 @@ BYBIT_API_SECRET = 'xXtHaJbZFNyFOA8SKDx3svBXH9aEbacqRlNm'
 
 # --- Торговые Параметры ---
 MAX_CONCURRENT_TRADES = 1
-# Эти значения будут использоваться при старте бота.
-# Их можно будет изменить на лету через Telegram.
 DEFAULT_STOP_LOSS_PERCENT = 1.0  # %
 DEFAULT_TAKE_PROFIT_PERCENT = 2.0  # %
 

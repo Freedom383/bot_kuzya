@@ -20,6 +20,7 @@ def get_historical_data(exchange: ccxt.Exchange, symbol: str, timeframe='5m', li
         
         df.ta.macd(close='close', fast=12, slow=26, signal=9, append=True)
         df.ta.sma(length=200, append=True)
+        df.ta.rsi(append=True) 
         
         df.dropna(inplace=True)
         return df
@@ -109,6 +110,7 @@ def check_divergence_signal(df, symbol):
     # Рассчитываем процентную разницу между минимумами
     lows_diff_percent = ((low2 - low1) / low2) * 100 if low2 > 0 else 0
     
+    rsi_value = df['RSI_14'].iloc[-2]
     # Собираем все данные в один словарь
     analysis_data = {
         'avg_volume_20': round(avg_volume_20, 2),
@@ -118,7 +120,8 @@ def check_divergence_signal(df, symbol):
         'price_above_sma200': price_above_sma200,
         'hammer_found': hammer_found,
         'bullish_engulfing_found': bullish_engulfing_found,
-        'lows_diff_percent': round(lows_diff_percent, 4) # <-- ДОБАВЛЕНО
+        'lows_diff_percent': round(lows_diff_percent, 4),
+        'rsi_value': round(rsi_value, 2) 
     }
 
     logger.info(f"[{symbol}] Аналитика сигнала: {analysis_data}")
