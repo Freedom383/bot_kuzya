@@ -8,9 +8,12 @@ import ccxt.pro as ccxt_pro
 import ccxt
 import pytz
 import pandas as pd
+import os
 
 import config
 from telegram_bot import get_main_loop, send_message
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 logger = logging.getLogger("bot_logger")
 
@@ -23,7 +26,7 @@ def get_yekaterinburg_time_str():
 
 def record_trade(data, lock):
     """Записывает данные о сделке, включая новую аналитику, в CSV файл."""
-    file_path = 'trades.csv'
+    file_path = os.path.join(BASE_DIR, 'trades.csv')
     
     # --- НОВОЕ ИЗМЕНЕНИЕ ЗДЕСЬ: Добавлено поле lows_diff_percent ---
     fieldnames = [

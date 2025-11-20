@@ -3,6 +3,9 @@ import logging
 from logging.handlers import RotatingFileHandler
 from datetime import datetime
 import pytz 
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def time_converter(timestamp):
     """Конвертирует время логгера в часовой пояс Екатеринбурга."""
@@ -26,11 +29,12 @@ def setup_logger():
     )
 
     log_formatter.converter = time_converter
-    # ---------------------------------------------
     
+    # ---------------------------------------------
+    log_file_path = os.path.join(BASE_DIR, 'bot_error.log')
     # Файловый обработчик с ротацией
     file_handler = RotatingFileHandler(
-        'bot_error.log', 
+        log_file_path, 
         maxBytes=5*1024*1024, # 5 MB
         backupCount=2,
         encoding='utf-8'

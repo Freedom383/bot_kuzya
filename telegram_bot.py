@@ -13,6 +13,8 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder
 import ccxt.async_support as ccxt_async
 import config
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # Глобальные переменные и функции до обработчиков остаются без изменений
 bot = None
 main_loop = None
@@ -52,7 +54,6 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
 
 # --- Обработчики команд ---
 
-# --- ИЗМЕНЕНИЕ 3: ОБНОВЛЯЕМ /help и /start ---
 @router.message(Command('help'))
 async def help_handler(msg: types.Message):
     """Отправляет справку и показывает клавиатуру."""
@@ -117,7 +118,7 @@ async def stop_handler(msg: types.Message):
 
 @router.message(Command('profit'))
 async def profit_handler(msg: types.Message):
-    file_path = 'trades.csv'
+    file_path = os.path.join(BASE_DIR, 'trades.csv') 
     if not os.path.exists(file_path):
         await msg.answer("📂 Файл `trades.csv` еще не создан.")
         return
@@ -158,7 +159,7 @@ async def config_handler(msg: types.Message):
 
 @router.message(Command('history'))
 async def history_handler(msg: types.Message):
-    file_path = 'trades.csv'
+    file_path = os.path.join(BASE_DIR, 'trades.csv') 
     if not os.path.exists(file_path):
         await msg.answer("📂 Файл `trades.csv` еще не создан.")
         return
@@ -171,7 +172,7 @@ async def history_handler(msg: types.Message):
 
 @router.message(Command('logs'))
 async def logs_handler(msg: types.Message):
-    log_file = 'bot_error.log'
+    log_file = os.path.join(BASE_DIR, 'bot_errors.log')
     if not os.path.exists(log_file):
         await msg.answer("📂 Файл `bot.log` не найден.")
         return
@@ -191,7 +192,7 @@ async def logs_handler(msg: types.Message):
 
 @router.message(Command('errorlog'))
 async def errorlog_handler(msg: types.Message):
-    log_file = 'bot_error.log'
+    log_file = os.path.join(BASE_DIR, 'bot_errors.log')
     if not os.path.exists(log_file):
         await msg.answer("📂 Файл `bot.log` не найден.")
         return

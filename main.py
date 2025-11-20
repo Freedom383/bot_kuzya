@@ -4,12 +4,15 @@ import time
 import logging
 from datetime import datetime
 import ccxt
+import os
 
 import config
 from logger_setup import setup_logger
 from scanner import get_historical_data, check_divergence_signal
 from trade_manager import manage_trade
 from telegram_bot import start_tg, register_main_objects, send_message
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 logger = setup_logger()
 
