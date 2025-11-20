@@ -106,12 +106,11 @@ def check_divergence_signal(df, symbol):
         if is_hammer(current_candle): hammer_found = True
         if is_bullish_engulfing(current_candle, prev_candle): bullish_engulfing_found = True
         
-    # 4. <-- НОВОЕ ИЗМЕНЕНИЕ ЗДЕСЬ -->
-    # Рассчитываем процентную разницу между минимумами
+    
     lows_diff_percent = ((low2 - low1) / low2) * 100 if low2 > 0 else 0
     
     rsi_value = df['RSI_14'].iloc[-2]
-    # Собираем все данные в один словарь
+    
     analysis_data = {
         'avg_volume_20': round(avg_volume_20, 2),
         'vol_minus_3': last_3_volumes[0],

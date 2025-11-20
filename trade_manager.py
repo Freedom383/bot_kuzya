@@ -7,6 +7,7 @@ from datetime import datetime
 import ccxt.pro as ccxt_pro
 import ccxt
 import pytz
+import pandas as pd
 
 import config
 from telegram_bot import get_main_loop, send_message
@@ -28,8 +29,8 @@ def record_trade(data, lock):
     fieldnames = [
         'token', 'purchase_time', 'sale_time', 'purchase_price', 'sale_price', 'result',
         'avg_volume_20', 'vol_minus_3', 'vol_minus_2', 'vol_minus_1',
-        'price_above_sma200', 'hammer_found', 'bullish_engulfing_found',
-        'lows_diff_percent' # <-- ДОБАВЛЕНО
+        'price_above_sma200', 'hammer_found', 'bullish_engulfing_found', 'rsi_value',  'price_above_sma50_1h',   
+        'price_above_sma200_1h', 'lows_diff_percent' 
     ]
     # ---------------------------------------------------------------
 
@@ -43,12 +44,52 @@ def record_trade(data, lock):
             if 'analysis_data' in data:
                 analysis = data.pop('analysis_data')
                 data.update(analysis)
-            
+                
+            # Заполняем пустые значения, если что-то пошло не так
+            for field in fieldnames:
+                data.setdefault(field, None)
+                
             writer.writerow(data)
             
     logger.info(f"[{data['token']}] Сделка записана в trades.csv")
 
+def get_1h_sma_analysis(symbol, entry_price):
+    """
+    Получает данные за 1 час, считает SMA 50/200 и сравнивает с ценой входа.
+    """
+    try:
+        logger.info(f"[{symbol}] Получаю данные за 1 час для анализа старшего тренда...")
+        # Создаем временный синхронный экземпляр ccxt для этого запроса
+        sync_exchange = ccxt.bybit({'options': {'defaultType': 'spot'}})
+        
+        # Запрашиваем 201 свечу, чтобы точно хватило для SMA_200
+        ohlcv_1h = sync_exchange.fetch_ohlcv(symbol, '1h', limit=201)
+        
+        if not ohlcv_1h or len(ohlcv_1h) < 200:
+            logger.warning(f"[{symbol}] Недостаточно данных за 1ч для расчета SMA.")
+            return None
 
+        df_1h = pd.DataFrame(ohlcv_1h, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        
+        # Рассчитываем SMA
+        df_1h.ta.sma(length=50, append=True)
+        df_1h.ta.sma(length=200, append=True)
+        
+        # Берем последние рассчитанные значения
+        sma50_1h = df_1h['SMA_50'].iloc[-1]
+        sma200_1h = df_1h['SMA_200'].iloc[-1]
+        
+        analysis = {
+            'price_above_sma50_1h': entry_price > sma50_1h,
+            'price_above_sma200_1h': entry_price > sma200_1h
+        }
+        logger.info(f"[{symbol}] Анализ на 1ч: {analysis}")
+        return analysis
+
+    except Exception as e:
+        logger.error(f"[{symbol}] Ошибка при анализе на 1ч таймфрейме: {e}")
+        return None
+    
 async def watch_loop(symbol, entry_price, bot_state, t_lock):
     """Основная функция отслеживания цены по WebSocket для SL/TP."""
     with t_lock:
@@ -127,6 +168,15 @@ def manage_trade(symbol, entry_price, analysis_data, bot_state, t_lock):
     Эта функция-обертка "покупает" монету, сохраняет аналитику и запускает отслеживание.
     """
     logger.info(f"[{symbol}] ЗАПУЩЕН МЕНЕДЖЕР СДЕЛКИ.")
+    
+    sma_analysis_1h = get_1h_sma_analysis(symbol, entry_price)
+    if sma_analysis_1h:
+        # Добавляем новые данные в наш словарь
+        analysis_data.update(sma_analysis_1h)
+    else:
+        # Если анализ не удался, добавляем значения по умолчанию
+        analysis_data['price_above_sma50_1h'] = None
+        analysis_data['price_above_sma200_1h'] = None
 
     logger.info(f"[{symbol}] СИМУЛЯЦИЯ ПОКУПКИ по цене {entry_price}")
     with t_lock:
