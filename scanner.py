@@ -21,6 +21,7 @@ def get_historical_data(exchange: ccxt.Exchange, symbol: str, timeframe='5m', li
         df.ta.macd(close='close', fast=12, slow=26, signal=9, append=True)
         df.ta.sma(length=200, append=True)
         df.ta.rsi(append=True) 
+        df.ta.atr(append=True) 
         
         df.dropna(inplace=True)
         return df
@@ -111,6 +112,8 @@ def check_divergence_signal(df, symbol):
     
     rsi_value = df['RSI_14'].iloc[-2]
     
+    atr_value = df['ATRr_14'].iloc[-2]
+    
     analysis_data = {
         'avg_volume_20': round(avg_volume_20, 2),
         'vol_minus_3': last_3_volumes[0],
@@ -120,7 +123,8 @@ def check_divergence_signal(df, symbol):
         'hammer_found': hammer_found,
         'bullish_engulfing_found': bullish_engulfing_found,
         'lows_diff_percent': round(lows_diff_percent, 4),
-        'rsi_value': round(rsi_value, 2) 
+        'rsi_value': round(rsi_value, 2),
+        'atr_value': atr_value
     }
 
     logger.info(f"[{symbol}] Аналитика сигнала: {analysis_data}")

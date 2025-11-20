@@ -9,11 +9,15 @@ from aiogram.filters import Command
 # --- ИЗМЕНЕНИЕ 1: ДОБАВЛЯЕМ ИМПОРТЫ ДЛЯ КЛАВИАТУРЫ ---
 from aiogram.types import FSInputFile, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
+from aiogram import Bot, Dispatcher, Router, types, F
+from aiogram.filters import Command
+from aiogram.types import Message, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 # --------------------------------------------------
 import ccxt.async_support as ccxt_async
 import config
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Глобальные переменные и функции до обработчиков остаются без изменений
 bot = None
@@ -23,6 +27,11 @@ t_lock = None
 run_scanner_func = None
 scanner_thread = None
 exchange = None
+
+class SettingsState(StatesGroup):
+    waiting_for_max_trades = State()
+    waiting_for_atr_multiplier = State()
+    
 router = Router()
 logger = logging.getLogger("bot_logger")
 def get_main_loop(): return main_loop
@@ -54,6 +63,7 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
 
 # --- Обработчики команд ---
 
+# --- ИЗМЕНЕНИЕ 3: ОБНОВЛЯЕМ /help и /start ---
 @router.message(Command('help'))
 async def help_handler(msg: types.Message):
     """Отправляет справку и показывает клавиатуру."""
@@ -118,7 +128,7 @@ async def stop_handler(msg: types.Message):
 
 @router.message(Command('profit'))
 async def profit_handler(msg: types.Message):
-    file_path = os.path.join(BASE_DIR, 'trades.csv') 
+    file_path = 'trades.csv'
     if not os.path.exists(file_path):
         await msg.answer("📂 Файл `trades.csv` еще не создан.")
         return
@@ -139,27 +149,35 @@ async def profit_handler(msg: types.Message):
         await msg.answer(f"🔴 Не удалось рассчитать профит. Ошибка: `{e}`")
 
 @router.message(Command('config'))
-async def config_handler(msg: types.Message):
-    args = msg.text.split()
-    if len(args) == 1:
-        with t_lock:
-            sl = bot_state['settings']['stop_loss_percent']
-            tp = bot_state['settings']['take_profit_percent']
-        config_text = f"⚙️ *Текущие настройки (live):*\n\nСтоп-лосс: `{sl}%`\nТейк-профит: `{tp}%`\nМакс. сделок: `{config.MAX_CONCURRENT_TRADES}`"
-        await msg.answer(config_text, parse_mode="Markdown")
-    elif len(args) == 3:
-        key, value_str = args[1].lower(), args[2]
-        try: new_value = float(value_str)
-        except ValueError: await msg.answer("❗️Значение должно быть числом."); return
-        setting_map = {"stop_loss": "stop_loss_percent", "take_profit": "take_profit_percent"}
-        if key not in setting_map: await msg.answer("❗️Неверный ключ."); return
-        with t_lock: bot_state['settings'][setting_map[key]] = new_value
-        await msg.answer(f"✅ Настройка *{key}* изменена на `{new_value}%`")
-    else: await msg.answer("❗️Неверный формат.")
+async def config_handler(msg: Message):
+    with t_lock:
+        # Используем .get() для безопасного получения значений
+        max_trades = bot_state['settings'].get('max_concurrent_trades', config.MAX_CONCURRENT_TRADES)
+        atr_multiplier = bot_state['settings'].get('atr_multiplier', config.ATR_MULTIPLIER)
+        
+    config_text = (
+        f"⚙️ *Текущая конфигурация:*\n\n"
+        f"▪️ *Макс. сделок:* `{max_trades}`\n"
+        f"▪️ *Множитель ATR:* `{atr_multiplier}` (для стоп-лосса)\n\n"
+        f"Нажмите на кнопку, чтобы изменить значение:"
+    )
+
+    # Создаем инлайн-кнопки
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(
+        text="⚙️ Изменить макс. сделок", 
+        callback_data="change_max_trades"
+    ))
+    builder.row(InlineKeyboardButton(
+        text="⚙️ Изменить множитель ATR", 
+        callback_data="change_atr_multiplier"
+    ))
+
+    await msg.answer(config_text, reply_markup=builder.as_markup())
 
 @router.message(Command('history'))
 async def history_handler(msg: types.Message):
-    file_path = os.path.join(BASE_DIR, 'trades.csv') 
+    file_path = 'trades.csv'
     if not os.path.exists(file_path):
         await msg.answer("📂 Файл `trades.csv` еще не создан.")
         return
@@ -172,7 +190,7 @@ async def history_handler(msg: types.Message):
 
 @router.message(Command('logs'))
 async def logs_handler(msg: types.Message):
-    log_file = os.path.join(BASE_DIR, 'bot_errors.log')
+    log_file = 'bot_error.log'
     if not os.path.exists(log_file):
         await msg.answer("📂 Файл `bot.log` не найден.")
         return
@@ -192,7 +210,7 @@ async def logs_handler(msg: types.Message):
 
 @router.message(Command('errorlog'))
 async def errorlog_handler(msg: types.Message):
-    log_file = os.path.join(BASE_DIR, 'bot_errors.log')
+    log_file = 'bot_error.log'
     if not os.path.exists(log_file):
         await msg.answer("📂 Файл `bot.log` не найден.")
         return
@@ -203,6 +221,68 @@ async def errorlog_handler(msg: types.Message):
         logger.error(f"Ошибка при отправке bot_error.log: {e}")
         await msg.answer(f"🔴 Не удалось отправить файл с логами. Ошибка: `{e}`")
 
+@router.callback_query(F.data == "change_max_trades")
+async def change_max_trades_callback(query: types.CallbackQuery, state: FSMContext):
+    await query.message.answer("Введите новое значение для *максимального количества сделок* (например, `1`):")
+    # Устанавливаем состояние ожидания
+    await state.set_state(SettingsState.waiting_for_max_trades)
+    await query.answer() # Убираем "часики" с кнопки
+
+@router.callback_query(F.data == "change_atr_multiplier")
+async def change_atr_multiplier_callback(query: types.CallbackQuery, state: FSMContext):
+    await query.message.answer("Введите новый *множитель для ATR* (например, `2.5`):")
+    # Устанавливаем состояние ожидания
+    await state.set_state(SettingsState.waiting_for_atr_multiplier)
+    await query.answer()
+
+
+# --- Обработчики состояний (когда бот ждет ввода от пользователя) ---
+
+@router.message(SettingsState.waiting_for_max_trades)
+async def process_max_trades(msg: Message, state: FSMContext):
+    try:
+        new_max_trades = int(msg.text)
+        if not (1 <= new_max_trades <= 10):
+            await msg.answer("❌ *Ошибка:* Значение должно быть целым числом от 1 до 10. Попробуйте снова.")
+            return
+        
+        with t_lock:
+            # Обновляем значение и в config, и в bot_state для надежности
+            config.MAX_CONCURRENT_TRADES = new_max_trades
+            bot_state['settings']['max_concurrent_trades'] = new_max_trades
+        
+        logger.info(f"Максимальное количество сделок изменено на {new_max_trades} пользователем.")
+        await msg.answer(f"✅ *Успешно!* Максимальное количество сделок установлено: `{new_max_trades}`.")
+        await state.clear() # Выходим из состояния ожидания
+
+    except (ValueError, TypeError):
+        await msg.answer("❌ *Ошибка:* Пожалуйста, введите целое число (например, `1`).")
+
+@router.message(SettingsState.waiting_for_atr_multiplier)
+async def process_atr_multiplier(msg: Message, state: FSMContext):
+    try:
+        new_atr = float(msg.text.replace(',', '.')) # Заменяем запятую на точку для удобства
+        if not (0.1 <= new_atr <= 10):
+            await msg.answer("❌ *Ошибка:* Множитель должен быть числом от 0.1 до 10. Попробуйте снова.")
+            return
+
+        with t_lock:
+            config.ATR_MULTIPLIER = new_atr
+            bot_state['settings']['atr_multiplier'] = new_atr
+            # При смене ATR, автоматически ставим этот режим как основной
+            config.STOP_LOSS_MODE = 'ATR'
+            bot_state['settings']['stop_loss_mode'] = 'ATR'
+        
+        logger.info(f"Множитель ATR изменен на {new_atr} пользователем.")
+        await msg.answer(
+            f"✅ *Успешно!* Множитель ATR установлен: `{new_atr}`.\n"
+            f"Режим стоп-лосса автоматически переключен на *ATR*."
+        )
+        await state.clear() # Выходим из состояния ожидания
+
+    except (ValueError, TypeError):
+        await msg.answer("❌ *Ошибка:* Пожалуйста, введите число (например, `2.5`).")
+        
 # --- Функция запуска (без изменений) ---
 def start_tg():
     global bot, main_loop

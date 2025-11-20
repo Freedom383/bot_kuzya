@@ -66,7 +66,6 @@ def run_scanner():
                                 break
 
                             logger.info(f"!!! [{symbol}] НАЙДЕН СИГНАЛ: {entry_price} !!!")
-                            send_message(f"🔥 *Сигнал на покупку:*\n`{symbol}` по цене `{entry_price}`")
 
                             bot_state['active_trades'][symbol] = { "status": "pending" }
                         

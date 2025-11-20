@@ -28,7 +28,7 @@ def record_trade(data, lock):
     """Записывает данные о сделке, включая новую аналитику, в CSV файл."""
     file_path = os.path.join(BASE_DIR, 'trades.csv')
     
-    # --- НОВОЕ ИЗМЕНЕНИЕ ЗДЕСЬ: Добавлено поле lows_diff_percent ---
+  
     fieldnames = [
         'token', 'purchase_time', 'sale_time', 'purchase_price', 'sale_price', 'result',
         'avg_volume_20', 'vol_minus_3', 'vol_minus_2', 'vol_minus_1',
@@ -93,16 +93,10 @@ def get_1h_sma_analysis(symbol, entry_price):
         logger.error(f"[{symbol}] Ошибка при анализе на 1ч таймфрейме: {e}")
         return None
     
-async def watch_loop(symbol, entry_price, bot_state, t_lock):
+async def watch_loop(symbol, entry_price, stop_loss_price, take_profit_price, bot_state, t_lock):
     """Основная функция отслеживания цены по WebSocket для SL/TP."""
-    with t_lock:
-        stop_loss_percent = bot_state['settings']['stop_loss_percent']
-        take_profit_percent = bot_state['settings']['take_profit_percent']
-
-    stop_loss_price = entry_price * (1 - stop_loss_percent / 100)
-    take_profit_price = entry_price * (1 + take_profit_percent / 100)
     
-    logger.info(f"[{symbol}] Цели (SL={stop_loss_percent}%, TP={take_profit_percent}%): TP={take_profit_price}, SL={stop_loss_price}")
+    logger.info(f"[{symbol}] Цели: TP={take_profit_price}, SL={stop_loss_price}")
     
     exchange = ccxt.pro.bybit()
     exit_price = 0
@@ -115,7 +109,7 @@ async def watch_loop(symbol, entry_price, bot_state, t_lock):
 
             if last_price is None: continue
             
-            logger.info(f"[{symbol}] Отслеживаю... Цена: {last_price}")
+            # logger.info(f"[{symbol}] Отслеживаю... Цена: {last_price}") # Можно закомментировать, чтобы не спамить в лог
             
             if last_price <= stop_loss_price:
                 exit_price, result = last_price, "Stop Loss"
@@ -168,18 +162,44 @@ async def watch_loop(symbol, entry_price, bot_state, t_lock):
 
 def manage_trade(symbol, entry_price, analysis_data, bot_state, t_lock):
     """
-    Эта функция-обертка "покупает" монету, сохраняет аналитику и запускает отслеживание.
+    Эта функция-обертка рассчитывает TP/SL, отправляет уведомление, "покупает" монету, 
+    сохраняет аналитику и запускает отслеживание.
     """
     logger.info(f"[{symbol}] ЗАПУЩЕН МЕНЕДЖЕР СДЕЛКИ.")
+
+    with t_lock:
+        settings = bot_state['settings'].copy()
+
+    # 1. Расчет Take Profit
+    take_profit_price = entry_price * (1 + settings['take_profit_percent'] / 100)
+
+    # 2. Расчет Stop Loss в зависимости от режима
+    atr_value = analysis_data.get('atr_value')
+    if settings.get('stop_loss_mode') == 'ATR' and atr_value:
+        atr_multiplier = settings.get('atr_multiplier', config.ATR_MULTIPLIER)
+        stop_loss_price = entry_price - (atr_multiplier * atr_value)
+        sl_info = f"ATR ({atr_multiplier}x)"
+    else:
+        stop_loss_price = entry_price * (1 - settings['stop_loss_percent'] / 100)
+        sl_info = f"{settings['stop_loss_percent']}%"
+
+    # 3. Отправка детализированного сообщения в Telegram
+    message_text = (
+        f"🔥 *Сигнал на покупку:*\n"
+        f"`{symbol}` по цене `{entry_price}`\n\n"
+        f"📈 *Take Profit:* `{take_profit_price}` (+{settings['take_profit_percent']}%)\n"
+        f"📉 *Stop Loss:* `{stop_loss_price}` ({sl_info})"
+    )
+    send_message(message_text)
     
+    # 4. Анализ на старшем ТФ (остается без изменений)
     sma_analysis_1h = get_1h_sma_analysis(symbol, entry_price)
     if sma_analysis_1h:
-        # Добавляем новые данные в наш словарь
         analysis_data.update(sma_analysis_1h)
     else:
-        # Если анализ не удался, добавляем значения по умолчанию
         analysis_data['price_above_sma50_1h'] = None
         analysis_data['price_above_sma200_1h'] = None
+    
 
     logger.info(f"[{symbol}] СИМУЛЯЦИЯ ПОКУПКИ по цене {entry_price}")
     with t_lock:
@@ -192,7 +212,8 @@ def manage_trade(symbol, entry_price, analysis_data, bot_state, t_lock):
     
     loop = get_main_loop() 
     if loop and loop.is_running():
-        task = loop.create_task(watch_loop(symbol, entry_price, bot_state, t_lock))
+        task = loop.create_task(
+            watch_loop(symbol, entry_price, stop_loss_price, take_profit_price, bot_state, t_lock))
         with t_lock:
             if symbol in bot_state['active_trades']:
                 bot_state['active_trades'][symbol]['task'] = task

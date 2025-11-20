@@ -1,5 +1,13 @@
 # config.py
 
+# --- Торговые Параметры ---
+MAX_CONCURRENT_TRADES = 1
+DEFAULT_STOP_LOSS_PERCENT = 1.0  # 
+DEFAULT_TAKE_PROFIT_PERCENT = 2.0  # %
+
+STOP_LOSS_MODE = 'ATR'  # Режим установки стоп-лосса. Варианты: 'ATR' или 'PERCENT'
+ATR_MULTIPLIER = 2.0    # Множитель N для ATR. Стоп = цена входа - (N * ATR)
+
 # --- Telegram Настройки ---
 TELEGRAM_BOT_TOKEN = "8442935176:AAEfMDKH7WsMycA1yxv0nv8QaGEaRsZ1b9E"
 TELEGRAM_CHAT_ID = '-4992993900'
@@ -7,11 +15,6 @@ TELEGRAM_CHAT_ID = '-4992993900'
 # --- API Ключи ---
 BYBIT_API_KEY = 'bKyNioyok1HbaJXzuM'
 BYBIT_API_SECRET = 'xXtHaJbZFNyFOA8SKDx3svBXH9aEbacqRlNm'
-
-# --- Торговые Параметры ---
-MAX_CONCURRENT_TRADES = 1
-DEFAULT_STOP_LOSS_PERCENT = 1.0  # %
-DEFAULT_TAKE_PROFIT_PERCENT = 2.0  # %
 
 my_symbols = [
     '0GUSDT', '1INCHUSDT', '2ZUSDT', 'A8USDT', 'AAPLXUSDT', 
