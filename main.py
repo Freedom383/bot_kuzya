@@ -19,6 +19,9 @@ bot_state = {
     "settings": {
         "stop_loss_percent": config.DEFAULT_STOP_LOSS_PERCENT,
         "take_profit_percent": config.DEFAULT_TAKE_PROFIT_PERCENT,
+        "max_concurrent_trades": config.DEFAULT_MAX_CONCURRENT_TRADES,
+        "atr_multiplier": config.DEFAULT_ATR_MULTIPLIER,
+        # ----------------------------
     }
 }
 t_lock = threading.Lock()
@@ -35,15 +38,16 @@ def run_scanner():
     while bot_state.get('running', False):
         try:
             with t_lock:
+                max_trades = bot_state['settings']['max_concurrent_trades']
                 active_trades_count = len(bot_state['active_trades'])
             
-            if active_trades_count >= config.MAX_CONCURRENT_TRADES:
-                logger.info(f"Все {config.MAX_CONCURRENT_TRADES} слота заняты. Ожидаю освобождения...")
+            if active_trades_count >= max_trades:
+                logger.info(f"Все {max_trades} слота заняты. Ожидаю освобождения...")
                 time.sleep(15)
                 continue
 
             logger.info(
-                f"Свободных слотов: {config.MAX_CONCURRENT_TRADES - active_trades_count}. "
+                f"Свободных слотов: {max_trades - active_trades_count}. "
                 f"Начинаю сканирование {len(config.my_symbols)} монет..."
             )
             
@@ -58,7 +62,7 @@ def run_scanner():
                     
                     if signal_found:
                         with t_lock:
-                            if len(bot_state['active_trades']) >= config.MAX_CONCURRENT_TRADES:
+                            if len(bot_state['active_trades']) >= bot_state['settings']['max_concurrent_trades']:
                                 logger.warning(f"[{symbol}] Найден сигнал, но слоты уже заняты.")
                                 break
 

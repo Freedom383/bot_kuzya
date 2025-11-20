@@ -95,12 +95,13 @@ async def status_handler(msg: types.Message):
     with t_lock:
         is_running = bot_state.get('running', False)
         active_trades = bot_state['active_trades'].copy()
+        max_trades = bot_state['settings']['max_concurrent_trades']
     status_text = "🟢 *Работает*" if is_running else "🔴 *Остановлен*"
     msg_text = f"📊 *Статус бота:* {status_text}\n\n"
     if not active_trades:
-        msg_text += f"Свободных слотов: *{config.MAX_CONCURRENT_TRADES}*. Нет активных сделок."
+        msg_text += f"Свободных слотов: *{max_trades}*. Нет активных сделок."
     else:
-        msg_text += f"Занято слотов: *{len(active_trades)} / {config.MAX_CONCURRENT_TRADES}*\n\n"
+        msg_text += f"Занято слотов: *{len(active_trades)} / {max_trades}*\n\n"
         for symbol, data in active_trades.items():
             entry_price_str = f"`{data.get('entry_price', 'N/A')}`"
             entry_time_str = f"`{data.get('entry_time', 'N/A')}`"
@@ -143,21 +144,67 @@ async def profit_handler(msg: types.Message):
 @router.message(Command('config'))
 async def config_handler(msg: types.Message):
     args = msg.text.split()
+    
+    # --- Показ текущих настроек ---
     if len(args) == 1:
         with t_lock:
-            sl = bot_state['settings']['stop_loss_percent']
-            tp = bot_state['settings']['take_profit_percent']
-        config_text = f"⚙️ *Текущие настройки (live):*\n\nСтоп-лосс: `{sl}%`\nТейк-профит: `{tp}%`\nМакс. сделок: `{config.MAX_CONCURRENT_TRADES}`"
+            # Копируем настройки, чтобы избежать проблем с многопоточностью
+            settings = bot_state['settings'].copy()
+
+        sl = settings['stop_loss_percent']
+        tp = settings['take_profit_percent']
+        max_trades = settings['max_concurrent_trades']
+        atr_multiplier = settings['atr_multiplier']
+
+        config_text = (
+            f"⚙️ *Текущие настройки (live):*\n\n"
+            f"Стоп-лосс: `{sl}%`\n"
+            f"Тейк-профит: `{tp}%`\n"
+            f"Макс. сделок: `{max_trades}`\n"
+            f"Множитель ATR: `{atr_multiplier}`\n\n"
+            f"Чтобы изменить, используйте команду, например:\n"
+            f"`/config max_trades 2`\n"
+            f"`/config atr_multiplier 1.5`"
+        )
         await msg.answer(config_text, parse_mode="Markdown")
-    elif len(args) == 3:
+        return
+    if len(args) == 3:
         key, value_str = args[1].lower(), args[2]
-        try: new_value = float(value_str)
-        except ValueError: await msg.answer("❗️Значение должно быть числом."); return
-        setting_map = {"stop_loss": "stop_loss_percent", "take_profit": "take_profit_percent"}
-        if key not in setting_map: await msg.answer("❗️Неверный ключ."); return
-        with t_lock: bot_state['settings'][setting_map[key]] = new_value
-        await msg.answer(f"✅ Настройка *{key}* изменена на `{new_value}%`")
-    else: await msg.answer("❗️Неверный формат.")
+
+        try:
+            new_value = float(value_str)
+        except ValueError:
+            await msg.answer("❗️Значение должно быть числом.")
+            return
+
+        # Карта для сопоставления ключа команды с ключом в bot_state['settings']
+        setting_map = {
+            "stop_loss": "stop_loss_percent",
+            "take_profit": "take_profit_percent",
+            "max_trades": "max_concurrent_trades",
+            "atr_multiplier": "atr_multiplier"
+        }
+
+        if key not in setting_map:
+            await msg.answer(f"❗️Неверный ключ. Доступные ключи: `{', '.join(setting_map.keys())}`")
+            return
+            
+        # Для max_trades значение должно быть целым числом
+        if key == "max_trades":
+            if new_value < 1 or new_value != int(new_value):
+                await msg.answer("❗️Значение для `max_trades` должно быть целым числом больше 0.")
+                return
+            new_value = int(new_value)
+
+        setting_key_in_state = setting_map[key]
+        with t_lock:
+            bot_state['settings'][setting_key_in_state] = new_value
+        
+        await msg.answer(f"✅ Настройка *{key}* изменена на `{new_value}`")
+        return
+
+    # --- Если формат команды неверный ---
+    await msg.answer("❗️Неверный формат команды. Используйте `/config` или `/config <ключ> <значение>`.")
 
 @router.message(Command('history'))
 async def history_handler(msg: types.Message):
