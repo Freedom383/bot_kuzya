@@ -83,20 +83,20 @@ def check_divergence_signal(df, symbol):
     if not is_divergence:
         return False, None, None
         
-    logger.info(f"[{symbol}] Найдена дивергенция: low1({low1}) < low2({low2}) и macd1({macd1:.6f}) > macd2({macd2:.6f})")
+    logger.info(f"[{symbol}] Найдена дивергенция: low1({low1}) < low2({low2})") # Убрал MACD для соответствия логике
     
     # --- НАЧАЛО ДОПОЛНИТЕЛЬНОГО АНАЛИЗА ---
     entry_price = df['close'].iloc[-2]
     
-    # 1. Анализ объемов
+    # Анализ объемов
     avg_volume_20 = df['volume'].iloc[-22:-2].mean()
     last_3_volumes = df['volume'].iloc[-4:-1].tolist()
     
-    # 2. Анализ SMA 200
+    # Анализ SMA 200
     sma_200 = df['SMA_200'].iloc[-2]
     price_above_sma200 = entry_price > sma_200
     
-    # 3. Поиск паттернов
+    # Поиск паттернов
     hammer_found = False
     bullish_engulfing_found = False
     for i in range(3):
@@ -107,13 +107,15 @@ def check_divergence_signal(df, symbol):
         if is_hammer(current_candle): hammer_found = True
         if is_bullish_engulfing(current_candle, prev_candle): bullish_engulfing_found = True
         
-    
     lows_diff_percent = ((low2 - low1) / low2) * 100 if low2 > 0 else 0
-    
     rsi_value = df['RSI_14'].iloc[-2]
-    
     atr_value = df['ATRr_14'].iloc[-2]
-    
+
+    # --- НОВЫЙ БЛОК: Расчет волатильности в процентах ---
+    avg_price_14 = df['close'].iloc[-15:-1].mean() # Средняя цена за 14 свечей (до сигнальной включительно)
+    volatility_percent = (atr_value / avg_price_14) * 100 if avg_price_14 > 0 else 0
+    # --- КОНЕЦ НОВОГО БЛОКА ---
+
     analysis_data = {
         'avg_volume_20': round(avg_volume_20, 2),
         'vol_minus_3': last_3_volumes[0],
@@ -124,7 +126,8 @@ def check_divergence_signal(df, symbol):
         'bullish_engulfing_found': bullish_engulfing_found,
         'lows_diff_percent': round(lows_diff_percent, 4),
         'rsi_value': round(rsi_value, 2),
-        'atr_value': atr_value
+        'atr_value': atr_value,
+        'volatility_percent': round(volatility_percent, 2) # --- ДОБАВЛЕНО НОВОЕ ПОЛЕ ---
     }
 
     logger.info(f"[{symbol}] Аналитика сигнала: {analysis_data}")
