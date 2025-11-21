@@ -46,9 +46,10 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
     # Добавляем кнопки
     builder.row(KeyboardButton(text="/start"), KeyboardButton(text="/stop"))
     builder.row(KeyboardButton(text="/status"), KeyboardButton(text="/profit"))
-    builder.row(KeyboardButton(text="/config"), KeyboardButton(text="/sell"))
+    builder.row(KeyboardButton(text="/config"), KeyboardButton(text="/balance"))
+    builder.row(KeyboardButton(text="/errorlog"), KeyboardButton(text="/sell"))
     builder.row(KeyboardButton(text="/history"), KeyboardButton(text="/logs"))
-    builder.row(KeyboardButton(text="/errorlog"))
+    
     
     return builder.as_markup(resize_keyboard=True)
 # -------------------------------------------------------------
@@ -86,9 +87,6 @@ async def start_handler(msg: types.Message):
         reply_markup=get_main_keyboard()
     )
 # -------------------------------------------------------------
-
-# Остальные обработчики команд остаются БЕЗ ИЗМЕНЕНИЙ,
-# так как кнопки просто отправляют текст команды, который эти обработчики и ловят.
 
 @router.message(Command('status'))
 async def status_handler(msg: types.Message):
@@ -164,8 +162,6 @@ async def config_handler(msg: types.Message):
 
         config_text = (
             f"⚙️ *Текущие настройки (live):*\n\n"
-            f"Стоп-лосс: `{sl}%`\n"
-            f"Тейк-профит: `{tp}%`\n"
             f"Макс. сделок: `{max_trades}`\n"
             f"Множитель ATR: `{atr_multiplier}`\n\n"
             f"Чтобы изменить, используйте команду, например:\n"
@@ -211,7 +207,25 @@ async def config_handler(msg: types.Message):
 
     # --- Если формат команды неверный ---
     await msg.answer("❗️Неверный формат команды. Используйте `/config` или `/config <ключ> <значение>`.")
+    
+@router.message(Command('balance'))
+async def balance_handler(msg: types.Message):
+    """Показывает текущий симулированный баланс и PnL."""
+    with t_lock:
+        current_balance = bot_state['balance_usdt']
+    
+    initial_balance = config.SIMULATION_INITIAL_BALANCE
+    total_pnl = current_balance - initial_balance
+    total_pnl_percent = (total_pnl / initial_balance) * 100
 
+    balance_text = (
+        f"🏦 *Состояние симуляционного портфеля:*\n\n"
+        f"Начальный баланс: `{initial_balance:.2f} USDT`\n"
+        f"Текущий баланс: `{current_balance:.2f} USDT`\n\n"
+        f"📈 *Общий PnL:* `{total_pnl:+.2f} USDT` ({total_pnl:+.2f}%)"
+    )
+    await msg.answer(balance_text, parse_mode="Markdown")
+    
 @router.message(Command('history'))
 async def history_handler(msg: types.Message):
     file_path = os.path.join(BASE_DIR, 'trades.csv')

@@ -16,6 +16,7 @@ logger = setup_logger()
 bot_state = {
     "active_trades": {},
     "running": False,
+    "balance_usdt": config.SIMULATION_INITIAL_BALANCE,  # Добавили баланс
     "settings": {
         "stop_loss_percent": config.DEFAULT_STOP_LOSS_PERCENT,
         "take_profit_percent": config.DEFAULT_TAKE_PROFIT_PERCENT,
@@ -68,8 +69,6 @@ def run_scanner():
                                 break
 
                             logger.info(f"!!! [{symbol}] НАЙДЕН СИГНАЛ: {entry_price} !!!")
-                            send_message(f"🔥 *Сигнал на покупку:*\n`{symbol}` по цене `{entry_price}`")
-
                             bot_state['active_trades'][symbol] = { "status": "pending" }
                         
                         trade_thread = threading.Thread(

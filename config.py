@@ -1,20 +1,26 @@
 # config.py
 
 # --- Торговые Параметры ---
-DEFAULT_MAX_CONCURRENT_TRADES = 1
-DEFAULT_STOP_LOSS_PERCENT = 1.0  # 
-DEFAULT_TAKE_PROFIT_PERCENT = 2.0  # %
+DEFAULT_MAX_CONCURRENT_TRADES = 3
+DEFAULT_STOP_LOSS_PERCENT = 0.1  # 
+DEFAULT_TAKE_PROFIT_PERCENT = 0.1  # %
 
 STOP_LOSS_MODE = 'ATR'  # Режим установки стоп-лосса. Варианты: 'ATR' или 'PERCENT'
 DEFAULT_ATR_MULTIPLIER = 2.0    # Множитель N для ATR. Стоп = цена входа - (N * ATR)
+
+
+# ---  ТРЕЙЛИНГ-СТОП ---
+USE_TRAILING_STOP = False  # True, чтобы использовать трейлинг-стоп вместо тейк-профита
+TRAILING_STOP_ACTIVATION_PERCENT = 1.0  # Цена должна вырасти на 1.0%, чтобы трейлинг активировался
+
+# --- Симуляция Портфеля ---
+SIMULATION_INITIAL_BALANCE = 1000.0  
+TRADING_COMMISSION_PERCENT = 0.1  
 
 # --- Telegram Настройки ---
 TELEGRAM_BOT_TOKEN = "8442935176:AAEfMDKH7WsMycA1yxv0nv8QaGEaRsZ1b9E"
 TELEGRAM_CHAT_ID = '-4992993900'
 
-# ---  ТРЕЙЛИНГ-СТОП ---
-USE_TRAILING_STOP = True  # True, чтобы использовать трейлинг-стоп вместо тейк-профита
-TRAILING_STOP_ACTIVATION_PERCENT = 1.0  # Цена должна вырасти на 1.0%, чтобы трейлинг активировался
 # --- API Ключи ---
 BYBIT_API_KEY = 'bKyNioyok1HbaJXzuM'
 BYBIT_API_SECRET = 'xXtHaJbZFNyFOA8SKDx3svBXH9aEbacqRlNm'
@@ -104,10 +110,10 @@ my_symbols = [
     'TOKENUSDT', 'TONUSDT', 'TOSHIUSDT', 'TOWNSUSDT', 'TRCUSDT',
     'TREEUSDT', 'TRUMPUSDT', 'TRVLUSDT', 'TRXUSDT', 'TSLAXUSDT',
     'TUNAUSDT', 'TURBOSUSDT', 'TUSDUSDT', 'TWTUSDT', 'ULTIUSDT',
-    'UMAUSDT', 'UNIUSDT', 'USD1USDT', 'USDCUSDT', 'USDDUSDT',
+    'UMAUSDT', 'UNIUSDT', 'USD1USDT', 'USDDUSDT',
     'USDEUSDT', 'USDTBUSDT', 'USDYUSDT',
     'USTCUSDT', 'UUSDT', 'UXLINKUSDT', 'VANAUSDT', 'VANRYUSDT',
-    'TUNAUSDT', 'TURBOSUSDT', 'TUSDUSDT', 'TWTUSDT', 'ULTIUSDT',
+    'TUNAUSDT', 'TURBOSUSDT', 'TWTUSDT', 'ULTIUSDT',
     'UMAUSDT', 'UNIUSDT', 'USD1USDT', 'USDCUSDT', 'USDDUSDT',
     'USDEUSDT', 'USDQUSDT', 'USDRUSDT', 'USDTBUSDT', 'USDYUSDT',
     'USTCUSDT', 'UUSDT', 'UXLINKUSDT', 'VANAUSDT', 'VANRYUSDT',
@@ -119,7 +125,7 @@ my_symbols = [
     'USTCUSDT', 'UUSDT', 'UXLINKUSDT', 'VANAUSDT', 'VANRYUSDT',
     'VELOUSDT', 'VENOMUSDT', 'VETUSDT', 'VICUSDT', 'VINUUSDT',
     'VIRTUALUSDT', 'VRAUSDT', 'VTHOUSDT', 'VVVUSDT', 'WALUSDT',
-    'WAVESUSDT', 'WAXPUSDT', 'WBTCUSDT', 'WCTUSDT', 'WEMIXUSDT',
+    'WAVESUSDT', 'WAXPUSDT', 'WCTUSDT', 'WEMIXUSDT',
     'WENUSDT', 'WIFUSDT', 'WLDUSDT', 'WLFIUSDT', 'WOOUSDT',
     'WUSDT', 'XAIUSDT', 'XANUSDT', 'XAUTUSDT', 'XAVAUSDT',
     'XCADUSDT', 'XDCUSDT', 'XEMUSDT', 'XIONUSDT',
