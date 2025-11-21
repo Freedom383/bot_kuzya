@@ -21,7 +21,8 @@ bot_state = {
         "take_profit_percent": config.DEFAULT_TAKE_PROFIT_PERCENT,
         "max_concurrent_trades": config.DEFAULT_MAX_CONCURRENT_TRADES,
         "atr_multiplier": config.DEFAULT_ATR_MULTIPLIER,
-        # ----------------------------
+        "use_trailing_stop": config.USE_TRAILING_STOP,
+        "trailing_stop_activation_percent": config.TRAILING_STOP_ACTIVATION_PERCENT,
     }
 }
 t_lock = threading.Lock()

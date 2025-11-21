@@ -95,12 +95,17 @@ async def status_handler(msg: types.Message):
     with t_lock:
         is_running = bot_state.get('running', False)
         active_trades = bot_state['active_trades'].copy()
+        # --- ИЗМЕНЕНИЕ ЗДЕСЬ: Получаем значение из настроек bot_state ---
         max_trades = bot_state['settings']['max_concurrent_trades']
+    
     status_text = "🟢 *Работает*" if is_running else "🔴 *Остановлен*"
     msg_text = f"📊 *Статус бота:* {status_text}\n\n"
+    
     if not active_trades:
+        # --- ИСПОЛЬЗУЕМ ПРАВИЛЬНУЮ ПЕРЕМЕННУЮ ---
         msg_text += f"Свободных слотов: *{max_trades}*. Нет активных сделок."
     else:
+        # --- ИСПОЛЬЗУЕМ ПРАВИЛЬНУЮ ПЕРЕМЕННУЮ ---
         msg_text += f"Занято слотов: *{len(active_trades)} / {max_trades}*\n\n"
         for symbol, data in active_trades.items():
             entry_price_str = f"`{data.get('entry_price', 'N/A')}`"
@@ -108,6 +113,7 @@ async def status_handler(msg: types.Message):
             msg_text += f"🪙 *Токен:* `{symbol}`\n"
             msg_text += f"   *Цена входа:* {entry_price_str}\n"
             msg_text += f"   *Время входа:* {entry_time_str}\n\n"
+            
     await msg.answer(msg_text, parse_mode="Markdown")
 
 @router.message(Command("stop"))
