@@ -3,6 +3,8 @@ import pandas as pd
 import pandas_ta as ta
 import logging
 import ccxt
+import config
+import pytz 
 
 logger = logging.getLogger("bot_logger")
 
@@ -15,9 +17,15 @@ def get_historical_data(exchange: ccxt.Exchange, symbol: str, timeframe='5m', li
             return None
 
         df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        
         df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
         df.set_index('timestamp', inplace=True)
+        # Приводим к нужному часовому поясу
+        if df.index.tz is None:
+            df.index = df.index.tz_localize('UTC')
+        df.index = df.index.tz_convert('Asia/Yekaterinburg')
         
+        # Расчет индикаторов
         df.ta.macd(close='close', fast=12, slow=26, signal=9, append=True)
         df.ta.sma(length=200, append=True)
         df.ta.rsi(append=True) 
@@ -27,7 +35,9 @@ def get_historical_data(exchange: ccxt.Exchange, symbol: str, timeframe='5m', li
         return df
 
     except Exception as e:
-        logger.error(f"[{symbol}] ОШИБКА в get_historical_data: {e}")
+        # Игнорируем ошибку отсутствия маркета (бывает на Bybit для старых тикеров)
+        if "does not have market" not in str(e).lower():
+            logger.error(f"[{symbol}] ОШИБКА в get_historical_data: {e}")
         return None
 
 def is_hammer(candle):
@@ -44,61 +54,70 @@ def is_bullish_engulfing(current_candle, prev_candle):
     """Проверяет, является ли пара свечей паттерном 'Бычье поглощение'."""
     if not (current_candle['close'] > current_candle['open'] and prev_candle['open'] > prev_candle['close']):
         return False
-    
     return current_candle['close'] > prev_candle['open'] and current_candle['open'] < prev_candle['close']
-
 
 def check_divergence_signal(df, symbol):
     """
-    Ищет дивергенцию и, в случае успеха, проводит дополнительный анализ.
-    Возвращает (Сигнал, Цена входа, Словарь с аналитикой).
+    Ищет дивергенцию и проводит анализ.
     """
-    if len(df) < 61: return False, None, None
+    if len(df) < 61: 
+        return False, None, None
 
-    last_closed_hist = df['MACDh_12_26_9'].iloc[-2]
-    prev_hist = df['MACDh_12_26_9'].iloc[-3]
+    # Берем предпоследнюю закрытую свечу (индекс -2), так как текущая (-1) еще формируется
+    last_closed_candle_idx = -2
     
+    # Данные MACD
+    last_closed_hist = df['MACDh_12_26_9'].iloc[last_closed_candle_idx]
+    prev_hist = df['MACDh_12_26_9'].iloc[last_closed_candle_idx - 1]
+    
+    # 1. Триггер: Пересечение гистограммы снизу вверх через 0
     if not (prev_hist < 0 and last_closed_hist > 0):
         return False, None, None
     
-    logger.info(f"[{symbol}] Триггер! Гистограмма пересекла 0. Ищу дивергенцию...")
-
-    last_15_candles = df.iloc[-17:-2]
-    candle1_idx = last_15_candles['MACDh_12_26_9'].idxmin()
+    # 2. Поиск первого дна
+    search_range_1 = df.iloc[-17:last_closed_candle_idx]
+    if search_range_1.empty: return False, None, None
+    
+    candle1_idx = search_range_1['MACDh_12_26_9'].idxmin()
     candle1 = df.loc[candle1_idx]
     macd1, low1 = candle1['MACDh_12_26_9'], candle1['low']
     
-    candle1_loc = df.index.get_loc(candle1_idx)
-    
-    prev_50_candles = df.iloc[max(0, candle1_loc - 50) : candle1_loc]
-    if prev_50_candles.empty: return False, None, None
+    # 3. Поиск второго (дальнего) дна
+    candle1_loc_in_df = df.index.get_loc(candle1_idx)
+    search_range_2 = df.iloc[max(0, candle1_loc_in_df - 50) : candle1_loc_in_df]
+    if search_range_2.empty: return False, None, None
         
-    candle2_idx = prev_50_candles['MACDh_12_26_9'].idxmin()
+    candle2_idx = search_range_2['MACDh_12_26_9'].idxmin()
     candle2 = df.loc[candle2_idx]
     macd2, low2 = candle2['MACDh_12_26_9'], candle2['low']
+    
+    # 4. Проверка условий дивергенции
+    price_diff_percent = ((low2 - low1) / low2) * 100 if low2 > 0 else 0
 
-    is_divergence = low1 < low2 
-    #is_divergence = low1 < low2 and macd1 > macd2
+    is_divergence = (
+        low1 < low2 and            # Цена ниже (или дно ниже)
+        macd1 > macd2 and          # MACD выше (сила медведей слабеет)
+        price_diff_percent >= config.MIN_PRICE_DIFF_PERCENT
+    )
     
     if not is_divergence:
         return False, None, None
         
-    logger.info(f"[{symbol}] Найдена дивергенция: low1({low1}) < low2({low2})") # Убрал MACD для соответствия логике
+    logger.info(f"[{symbol}] ДИВЕРГЕНЦИЯ НАЙДЕНА: low1({low1:.4f}) < low2({low2:.4f}), macd1({macd1:.4f}) > macd2({macd2:.4f})") 
     
-    # --- НАЧАЛО ДОПОЛНИТЕЛЬНОГО АНАЛИЗА ---
-    entry_price = df['close'].iloc[-2]
+    # Сбор данных
+    entry_price = df['close'].iloc[last_closed_candle_idx]
     
-    # Анализ объемов
-    avg_volume_20 = df['volume'].iloc[-22:-2].mean()
-    last_3_volumes = df['volume'].iloc[-4:-1].tolist()
+    avg_volume_20 = df['volume'].iloc[-22:last_closed_candle_idx].mean()
+    last_3_volumes = df['volume'].iloc[-4:last_closed_candle_idx + 1].tolist()
     
-    # Анализ SMA 200
-    sma_200 = df['SMA_200'].iloc[-2]
+    sma_200 = df['SMA_200'].iloc[last_closed_candle_idx]
     price_above_sma200 = entry_price > sma_200
     
-    # Поиск паттернов
     hammer_found = False
     bullish_engulfing_found = False
+    
+    candle1_loc = df.index.get_loc(candle1_idx)
     for i in range(3):
         idx_to_check = candle1_loc + i
         if idx_to_check >= len(df) or idx_to_check == 0: continue
@@ -107,15 +126,12 @@ def check_divergence_signal(df, symbol):
         if is_hammer(current_candle): hammer_found = True
         if is_bullish_engulfing(current_candle, prev_candle): bullish_engulfing_found = True
         
-    lows_diff_percent = ((low2 - low1) / low2) * 100 if low2 > 0 else 0
-    rsi_value = df['RSI_14'].iloc[-2]
-    atr_value = df['ATRr_14'].iloc[-2]
+    rsi_value = df['RSI_14'].iloc[last_closed_candle_idx]
+    atr_value = df['ATRr_14'].iloc[last_closed_candle_idx]
 
-    # --- НОВЫЙ БЛОК: Расчет волатильности в процентах ---
-    avg_price_14 = df['close'].iloc[-15:-1].mean() # Средняя цена за 14 свечей (до сигнальной включительно)
+    avg_price_14 = df['close'].iloc[-15:last_closed_candle_idx].mean()
     volatility_percent = (atr_value / avg_price_14) * 100 if avg_price_14 > 0 else 0
-    # --- КОНЕЦ НОВОГО БЛОКА ---
-
+    
     analysis_data = {
         'avg_volume_20': round(avg_volume_20, 2),
         'vol_minus_3': last_3_volumes[0],
@@ -124,12 +140,11 @@ def check_divergence_signal(df, symbol):
         'price_above_sma200': price_above_sma200,
         'hammer_found': hammer_found,
         'bullish_engulfing_found': bullish_engulfing_found,
-        'lows_diff_percent': round(lows_diff_percent, 4),
+        'lows_diff_percent': round(price_diff_percent, 4),
         'rsi_value': round(rsi_value, 2),
         'atr_value': atr_value,
-        'volatility_percent': round(volatility_percent, 2) # --- ДОБАВЛЕНО НОВОЕ ПОЛЕ ---
+        'volatility_percent': round(volatility_percent, 2) 
     }
 
-    logger.info(f"[{symbol}] Аналитика сигнала: {analysis_data}")
-    
+    logger.info(f"[{symbol}] Аналитика сигнала готова.")
     return True, entry_price, analysis_data

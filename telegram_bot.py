@@ -6,10 +6,10 @@ import os
 import pandas as pd
 from aiogram import Bot, Dispatcher, Router, types
 from aiogram.filters import Command
-# --- ИЗМЕНЕНИЕ 1: ДОБАВЛЯЕМ ИМПОРТЫ ДЛЯ КЛАВИАТУРЫ ---
+
 from aiogram.types import FSInputFile, ReplyKeyboardMarkup, KeyboardButton
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
-# --------------------------------------------------
+
 import ccxt.async_support as ccxt_async
 import config
 
@@ -55,8 +55,6 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
 # -------------------------------------------------------------
 
 # --- Обработчики команд ---
-
-# --- ИЗМЕНЕНИЕ 3: ОБНОВЛЯЕМ /help и /start ---
 @router.message(Command('help'))
 async def help_handler(msg: types.Message):
     """Отправляет справку и показывает клавиатуру."""
@@ -100,10 +98,8 @@ async def status_handler(msg: types.Message):
     msg_text = f"📊 *Статус бота:* {status_text}\n\n"
     
     if not active_trades:
-        # --- ИСПОЛЬЗУЕМ ПРАВИЛЬНУЮ ПЕРЕМЕННУЮ ---
         msg_text += f"Свободных слотов: *{max_trades}*. Нет активных сделок."
     else:
-        # --- ИСПОЛЬЗУЕМ ПРАВИЛЬНУЮ ПЕРЕМЕННУЮ ---
         msg_text += f"Занято слотов: *{len(active_trades)} / {max_trades}*\n\n"
         for symbol, data in active_trades.items():
             entry_price_str = f"`{data.get('entry_price', 'N/A')}`"
@@ -273,7 +269,7 @@ async def errorlog_handler(msg: types.Message):
         logger.error(f"Ошибка при отправке {log_filename}: {e}")
         await msg.answer(f"🔴 Не удалось отправить файл с логами. Ошибка: `{e}`")
 
-# --- Функция запуска (без изменений) ---
+# --- Функция запуска ---
 def start_tg():
     global bot, main_loop
     bot = Bot(token=config.TELEGRAM_BOT_TOKEN)

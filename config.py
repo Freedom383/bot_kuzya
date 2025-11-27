@@ -2,16 +2,17 @@
 
 # --- Торговые Параметры ---
 DEFAULT_MAX_CONCURRENT_TRADES = 3
-DEFAULT_STOP_LOSS_PERCENT = 0.1  # 
-DEFAULT_TAKE_PROFIT_PERCENT = 0.1  # %
+DEFAULT_STOP_LOSS_PERCENT = 1  # 
+DEFAULT_TAKE_PROFIT_PERCENT = 3  # %
+MIN_PRICE_DIFF_PERCENT = 0 # Минимальная разница в 1%
 
 STOP_LOSS_MODE = 'ATR'  # Режим установки стоп-лосса. Варианты: 'ATR' или 'PERCENT'
-DEFAULT_ATR_MULTIPLIER = 2.0    # Множитель N для ATR. Стоп = цена входа - (N * ATR)
+DEFAULT_ATR_MULTIPLIER = 3.0    # Множитель N для ATR. Стоп = цена входа - (N * ATR)
 
 
 # ---  ТРЕЙЛИНГ-СТОП ---
-USE_TRAILING_STOP = False  # True, чтобы использовать трейлинг-стоп вместо тейк-профита
-TRAILING_STOP_ACTIVATION_PERCENT = 1.0  # Цена должна вырасти на 1.0%, чтобы трейлинг активировался
+USE_TRAILING_STOP = True # True, чтобы использовать трейлинг-стоп вместо тейк-профита
+TRAILING_STOP_ACTIVATION_PERCENT = 1  # Цена должна вырасти на 1.0%, чтобы трейлинг активировался
 
 # --- Симуляция Портфеля ---
 SIMULATION_INITIAL_BALANCE = 1000.0  
